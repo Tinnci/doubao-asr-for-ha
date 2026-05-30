@@ -5,11 +5,41 @@ description = "Home Assistant Wyoming ASR server backed by Doubao ASR"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
+authors = [
+    { name = "doubao-asr-for-ha contributors" },
+]
+keywords = [
+    "asr",
+    "doubao",
+    "home-assistant",
+    "speech-to-text",
+    "voice-assistant",
+    "wyoming",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: AsyncIO",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Home Automation",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
 dependencies = [
     "aiohttp>=3.9.0",
     "opuslib>=3.0.1",
     "wyoming[zeroconf]>=1.8.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Tinnci/doubao-asr-for-ha"
+Repository = "https://github.com/Tinnci/doubao-asr-for-ha"
+Issues = "https://github.com/Tinnci/doubao-asr-for-ha/issues"
+Source = "https://github.com/Tinnci/doubao-asr-for-ha"
+Upstream = "https://github.com/EvanDbg/doubao-ime-win"
 
 [project.scripts]
 wyoming-doubao-asr = "wyoming_doubao_asr.__main__:run"

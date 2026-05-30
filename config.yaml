@@ -2,7 +2,7 @@
 version: 0.1.0
 slug: doubao_asr
 name: Doubao ASR
-description: Speech-to-text with Doubao ASR over the Wyoming protocol
+description: Unofficial Home Assistant Wyoming speech-to-text add-on backed by Doubao ASR
 url: https://github.com/Tinnci/doubao-asr-for-ha
 arch:
   - amd64
