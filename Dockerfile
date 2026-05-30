@@ -1,4 +1,4 @@
-ARG BUILD_FROM
+ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-debian:bookworm
 FROM ghcr.io/astral-sh/uv:0.9.26 AS uv
 
 FROM ${BUILD_FROM}

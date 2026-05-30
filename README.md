@@ -51,7 +51,8 @@ Current local verification:
 
 - `uv run pytest`: 11 passed.
 - Wyoming smoke test: passed.
-- Docker image build: not verified locally because Docker daemon was unavailable.
+- Docker image build: passed locally.
+- Container Wyoming smoke test: passed locally.
 
 ## Home Assistant
 
@@ -75,6 +76,16 @@ adding non-ASR features such as TTS and wake-word detection.
 The current implementation is an MVP. It validates the local Wyoming protocol,
 protobuf framing, and client sequencing with tests, but real Doubao ASR behavior
 still depends on the availability and terms of the upstream service.
+
+## Legal and compliance
+
+- License: MIT License. See `LICENSE`.
+- Upstream protocol attribution: see `NOTICE.md`.
+- Unofficial project status, user responsibilities, third-party voice service
+  notice, and warranty disclaimer: see `DISCLAIMER.md`.
+
+Users are responsible for confirming that their use complies with applicable
+service terms, laws, privacy rules, and data protection requirements.
 
 ## License
 
