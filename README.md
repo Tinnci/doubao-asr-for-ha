@@ -1,6 +1,7 @@
 # Doubao ASR for Home Assistant
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![CI](https://github.com/Tinnci/doubao-asr-for-ha/actions/workflows/ci.yml/badge.svg)](https://github.com/Tinnci/doubao-asr-for-ha/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Home Assistant Add-on](https://img.shields.io/badge/Home%20Assistant-Add--on-41BDF5.svg)](config.yaml)
 [![Wyoming Protocol](https://img.shields.io/badge/protocol-Wyoming-orange.svg)](https://www.home-assistant.io/integrations/wyoming/)
@@ -106,18 +107,19 @@ printf '{ "type": "describe" }\n' | nc -w 1 127.0.0.1 10300
 - Wyoming smoke test: passed.
 - Docker image build: passed.
 - Container Wyoming smoke test: passed.
+- GitHub Actions CI: Python tests and Docker build configured.
 
 ## 后续方向 / Roadmap
 
 - 在真实 Home Assistant OS 和 Supervised 环境中验证镜像、安装和 Wyoming 发现。
 - 对上游 ASR 服务执行端到端实时语音识别测试。
 - 加固 WebSocket 超时、重试、token 刷新和错误日志。
-- 增加 CI 测试和发布检查。
+- 增加发布检查和版本化 release。
 
 - Validate image build, installation, and Wyoming discovery in real Home Assistant OS and Supervised environments.
 - Run end-to-end live ASR tests against the upstream service.
 - Harden websocket timeout, retry, token refresh, and error logging.
-- Add CI tests and release checks.
+- Add release checks and versioned releases.
 
 非目标：绕过访问控制、宣称官方豆包 API 支持、或添加 TTS/唤醒词等非 ASR 功能。
 
