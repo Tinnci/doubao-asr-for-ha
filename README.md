@@ -47,6 +47,34 @@ The upstream project states that its implementation is based on analysis of the 
 
 Add this repository as a local/custom Home Assistant add-on repository, install `Doubao ASR`, then discover or add it through the Wyoming Protocol integration. The add-on listens on `10300/tcp`.
 
+## HA OS vs Docker
+
+Home Assistant OS 支持 add-ons：推荐直接添加本仓库并通过 Add-on Store 安装。
+
+Home Assistant Container/Docker 不支持 add-ons：需要把本项目作为独立容器运行，再在 Home Assistant 里手动添加 Wyoming integration，地址填容器服务名或宿主机 IP，端口 `10300`。
+
+Home Assistant OS supports add-ons: add this repository and install it from the Add-on Store.
+
+Home Assistant Container/Docker does not support add-ons: run this project as a separate container, then manually add the Wyoming integration in Home Assistant. Use the container service name or host IP with port `10300`.
+
+Minimal Docker Compose example:
+
+```yaml
+services:
+  doubao-asr:
+    image: ghcr.io/tinnci/doubao-asr-for-ha:latest
+    ports:
+      - "10300:10300"
+    volumes:
+      - ./doubao-asr-data:/data
+```
+
+The container uses default options when `/data/options.json` is missing. To override them, create:
+
+```json
+{"debug_logging": false, "response_timeout_s": 15}
+```
+
 ## 开发 / Development
 
 使用 `uv`：
