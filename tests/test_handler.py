@@ -1,9 +1,11 @@
 import asyncio
+import logging
 
 from wyoming.asr import Transcribe, Transcript
 from wyoming.audio import AudioChunk, AudioStop
 from wyoming.info import Describe
 
+from wyoming_doubao_asr.client import DoubaoAsrError
 from wyoming_doubao_asr.handler import DoubaoEventHandler, build_info
 
 
@@ -20,6 +22,16 @@ class FakeClient:
         chunks = list(pcm_chunks)
         self.calls.append((chunks, language))
         return "打开客厅灯"
+
+
+class FailingClient:
+    async def transcribe_pcm(
+        self,
+        pcm_chunks,
+        *,
+        language: str | None = None,
+    ) -> str:
+        raise DoubaoAsrError("connect", "network down", request_id="request-1")
 
 
 def make_handler(fake_client: FakeClient) -> tuple[DoubaoEventHandler, list]:
@@ -62,3 +74,23 @@ async def test_audio_stop_transcribes_collected_audio() -> None:
     assert keep_running is False
     assert transcript.text == "打开客厅灯"
     assert fake_client.calls == [([b"\x01\x00"], "zh")]
+
+
+async def test_audio_stop_logs_asr_error_phase(caplog) -> None:
+    handler, _written = make_handler(FailingClient())
+    caplog.set_level(logging.ERROR)
+
+    await handler.handle_event(Transcribe(language="zh").event())
+    await handler.handle_event(
+        AudioChunk(rate=16000, width=2, channels=1, audio=b"\x01\x00").event()
+    )
+
+    try:
+        await handler.handle_event(AudioStop().event())
+    except DoubaoAsrError:
+        pass
+    else:
+        raise AssertionError("expected DoubaoAsrError")
+
+    assert "phase=connect" in caplog.text
+    assert "request_id=request-1" in caplog.text

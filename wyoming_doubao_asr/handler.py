@@ -12,6 +12,7 @@ from wyoming.info import AsrModel, AsrProgram, Attribution, Describe, Info
 from wyoming.server import AsyncEventHandler
 
 from . import __version__
+from .client import DoubaoAsrError
 from .constants import CHANNELS, SAMPLE_RATE, SAMPLE_WIDTH
 
 _LOGGER = logging.getLogger(__name__)
@@ -65,10 +66,18 @@ class DoubaoEventHandler(AsyncEventHandler):
             return True
 
         if AudioStop.is_type(event.type):
-            text = await self._client.transcribe_pcm(
-                list(self._audio_chunks),
-                language=self._language,
-            )
+            try:
+                text = await self._client.transcribe_pcm(
+                    list(self._audio_chunks),
+                    language=self._language,
+                )
+            except DoubaoAsrError as err:
+                _LOGGER.exception(
+                    "Doubao ASR failed phase=%s request_id=%s",
+                    err.phase,
+                    err.request_id,
+                )
+                raise
             _LOGGER.info("Transcript: %s", text)
             await self.write_event(Transcript(text=text, language=self._language).event())
             self._audio_chunks.clear()

@@ -1,6 +1,6 @@
 import json
 
-from wyoming_doubao_asr.client import DoubaoAsrClient
+from wyoming_doubao_asr.client import DoubaoAsrClient, DoubaoAsrError
 from wyoming_doubao_asr.device import DeviceCredentials
 from wyoming_doubao_asr.protocol import (
     FRAME_STATE_FIRST,
@@ -56,6 +56,11 @@ class FakeTransport:
     async def connect(self, url: str, headers: dict[str, str]) -> FakeWebSocket:
         self.connect_calls.append((url, headers))
         return self.websocket
+
+
+class FailingTransport:
+    async def connect(self, url: str, headers: dict[str, str]) -> FakeWebSocket:
+        raise OSError("network down")
 
 
 class FakeEncoder:
@@ -123,7 +128,35 @@ async def test_transcribe_pcm_raises_on_start_task_error() -> None:
 
     try:
         await client.transcribe_pcm([b"\x01\x00" * 320])
-    except RuntimeError as err:
+    except DoubaoAsrError as err:
+        assert err.phase == "start_task"
         assert "bad token" in str(err)
+        assert "token-1" not in str(err)
     else:
-        raise AssertionError("expected RuntimeError")
+        raise AssertionError("expected DoubaoAsrError")
+
+
+async def test_transcribe_pcm_wraps_connect_errors_with_phase() -> None:
+    client = DoubaoAsrClient(
+        credentials_provider=lambda: DeviceCredentials(
+            device_id="device-1",
+            install_id="install-1",
+            cdid="cdid-1",
+            openudid="open-1",
+            clientudid="client-1",
+            token="token-1",
+        ),
+        transport=FailingTransport(),
+        encoder_factory=lambda: FakeEncoder(),
+        request_id_factory=lambda: "request-1",
+    )
+
+    try:
+        await client.transcribe_pcm([b"\x01\x00" * 320])
+    except DoubaoAsrError as err:
+        assert err.phase == "connect"
+        assert err.request_id == "request-1"
+        assert "network down" in str(err)
+        assert "token-1" not in str(err)
+    else:
+        raise AssertionError("expected DoubaoAsrError")
