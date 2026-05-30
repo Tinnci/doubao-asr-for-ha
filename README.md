@@ -22,6 +22,7 @@ This project assumes the Doubao ASR interface is publicly available for this use
 - 基于 `EvanDbg/doubao-ime-win` 的 WebSocket/protobuf ASR 会话流程。
 - 将 Wyoming PCM 音频转换为 16 kHz mono 20 ms Opus 帧后发送。
 - 失败日志包含 ASR 阶段和 request id，便于真实 Home Assistant 环境排障。
+- `StartTask` 认证/token 失败时自动刷新 token 并重试一次。
 
 - Exposes a Wyoming ASR server on `10300/tcp`.
 - Includes Home Assistant add-on metadata: `config.yaml`, `build.yaml`, `Dockerfile`.
@@ -29,6 +30,7 @@ This project assumes the Doubao ASR interface is publicly available for this use
 - Implements the WebSocket/protobuf ASR session flow based on `EvanDbg/doubao-ime-win`.
 - Converts Wyoming PCM audio into 16 kHz mono 20 ms Opus frames before sending.
 - Logs ASR failure phase and request id for real Home Assistant troubleshooting.
+- Refreshes the token and retries once when `StartTask` fails with an auth/token error.
 
 ## 上游来源 / Upstream Source
 
@@ -100,7 +102,7 @@ printf '{ "type": "describe" }\n' | nc -w 1 127.0.0.1 10300
 
 当前本地验证 / Current local verification:
 
-- `uv run pytest`: 14 passed.
+- `uv run pytest`: 16 passed.
 - Wyoming smoke test: passed.
 - Docker image build: passed.
 - Container Wyoming smoke test: passed.

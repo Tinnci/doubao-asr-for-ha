@@ -98,6 +98,23 @@ class CredentialStore:
 
         return self._credentials
 
+    async def refresh_token(self) -> DeviceCredentials:
+        """Clear the cached ASR token and fetch a fresh one."""
+        if self._credentials is None:
+            self._credentials = (
+                DeviceCredentials.load(self.path)
+                if self.path.exists()
+                else DeviceCredentials.generated()
+            )
+
+        if not self._credentials.device_id:
+            await register_device(self._credentials)
+
+        self._credentials.token = ""
+        await get_asr_token(self._credentials)
+        self._credentials.save(self.path)
+        return self._credentials
+
 
 async def register_device(credentials: DeviceCredentials) -> None:
     header = _device_register_header(credentials)

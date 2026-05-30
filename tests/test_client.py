@@ -58,6 +58,16 @@ class FakeTransport:
         return self.websocket
 
 
+class SequenceTransport:
+    def __init__(self, websockets: list[FakeWebSocket]) -> None:
+        self.websockets = websockets
+        self.connect_calls = []
+
+    async def connect(self, url: str, headers: dict[str, str]) -> FakeWebSocket:
+        self.connect_calls.append((url, headers))
+        return self.websockets.pop(0)
+
+
 class FailingTransport:
     async def connect(self, url: str, headers: dict[str, str]) -> FakeWebSocket:
         raise OSError("network down")
@@ -160,3 +170,50 @@ async def test_transcribe_pcm_wraps_connect_errors_with_phase() -> None:
         assert "token-1" not in str(err)
     else:
         raise AssertionError("expected DoubaoAsrError")
+
+
+async def test_transcribe_pcm_refreshes_token_once_on_auth_start_task_error() -> None:
+    first_websocket = FakeWebSocket()
+    first_websocket.responses = [
+        encode_response(message_type="TaskFailed", status_message="bad token")
+    ]
+    second_websocket = FakeWebSocket()
+    transport = SequenceTransport([first_websocket, second_websocket])
+    credentials = DeviceCredentials(
+        device_id="device-1",
+        install_id="install-1",
+        cdid="cdid-1",
+        openudid="open-1",
+        clientudid="client-1",
+        token="expired-token",
+    )
+    refresh_calls = []
+
+    async def refresh_credentials() -> DeviceCredentials:
+        refresh_calls.append(credentials.token)
+        credentials.token = "fresh-token"
+        return credentials
+
+    client = DoubaoAsrClient(
+        credentials_provider=lambda: credentials,
+        refresh_credentials=refresh_credentials,
+        transport=transport,
+        encoder_factory=lambda: FakeEncoder(),
+        request_id_factory=lambda: "request-1",
+        time_ms_factory=lambda: 1000,
+    )
+
+    text = await client.transcribe_pcm(iter([b"\x01\x00" * 320]))
+
+    first_start_task = decode_request(first_websocket.sent[0])
+    second_start_task = decode_request(second_websocket.sent[0])
+    second_methods = [decode_request(data)["method_name"] for data in second_websocket.sent]
+
+    assert text == "打开客厅灯"
+    assert refresh_calls == ["expired-token"]
+    assert first_start_task["token"] == "expired-token"
+    assert second_start_task["token"] == "fresh-token"
+    assert "TaskRequest" in second_methods
+    assert first_websocket.closed is True
+    assert second_websocket.closed is True
+    assert len(transport.connect_calls) == 2

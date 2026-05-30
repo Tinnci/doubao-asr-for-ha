@@ -47,6 +47,7 @@ async def main() -> None:
     credential_store = CredentialStore(Path(args.credentials_file))
     doubao_client = DoubaoAsrClient(
         credentials_provider=credential_store.get,
+        refresh_credentials=credential_store.refresh_token,
         response_timeout_s=args.response_timeout_s,
     )
     wyoming_info = build_info()

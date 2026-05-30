@@ -86,6 +86,10 @@ CredentialsProvider = Callable[
     [],
     DeviceCredentials | Awaitable[DeviceCredentials],
 ]
+RefreshCredentials = Callable[
+    [],
+    DeviceCredentials | Awaitable[DeviceCredentials],
+]
 
 
 class DoubaoAsrError(RuntimeError):
@@ -111,6 +115,7 @@ class DoubaoAsrClient:
         self,
         *,
         credentials_provider: CredentialsProvider,
+        refresh_credentials: RefreshCredentials | None = None,
         transport: DoubaoTransport | None = None,
         encoder_factory: Callable[[], OpusFrameEncoder] = OpusFrameEncoder,
         request_id_factory: Callable[[], str] | None = None,
@@ -118,6 +123,7 @@ class DoubaoAsrClient:
         response_timeout_s: float = 15.0,
     ) -> None:
         self._credentials_provider = credentials_provider
+        self._refresh_credentials = refresh_credentials
         self._transport = transport or AiohttpTransport()
         self._encoder_factory = encoder_factory
         self._request_id_factory = request_id_factory or (lambda: str(uuid.uuid4()))
@@ -133,6 +139,7 @@ class DoubaoAsrClient:
         del language
         request_id = self._request_id_factory()
         _LOGGER.info("Doubao ASR request started request_id=%s", request_id)
+        audio_chunks = list(pcm_chunks)
 
         try:
             credentials = await self._get_credentials()
@@ -143,6 +150,37 @@ class DoubaoAsrClient:
                 request_id=request_id,
             ) from err
 
+        try:
+            return await self._transcribe_with_credentials(
+                audio_chunks,
+                credentials,
+                request_id,
+            )
+        except DoubaoAsrError as err:
+            if not (
+                (err.phase == "start_task")
+                and _is_auth_error(str(err))
+                and (self._refresh_credentials is not None)
+            ):
+                raise
+
+            _LOGGER.warning(
+                "Doubao ASR auth failed; refreshing credentials request_id=%s",
+                request_id,
+            )
+            refreshed_credentials = await self._refresh_credentials_now()
+            return await self._transcribe_with_credentials(
+                audio_chunks,
+                refreshed_credentials,
+                request_id,
+            )
+
+    async def _transcribe_with_credentials(
+        self,
+        pcm_chunks: list[bytes],
+        credentials: DeviceCredentials,
+        request_id: str,
+    ) -> str:
         try:
             ws = await self._transport.connect(
                 self._ws_url(credentials.device_id),
@@ -242,6 +280,13 @@ class DoubaoAsrClient:
                 if inspect.isawaitable(result):
                     await result
 
+    async def _refresh_credentials_now(self) -> DeviceCredentials:
+        assert self._refresh_credentials is not None
+        credentials = self._refresh_credentials()
+        if inspect.isawaitable(credentials):
+            return await credentials
+        return credentials
+
     async def _get_credentials(self) -> DeviceCredentials:
         credentials = self._credentials_provider()
         if inspect.isawaitable(credentials):
@@ -322,3 +367,18 @@ class DoubaoAsrClient:
             "x-custom-keepalive": "true",
             "Host": "frontier-audio-ime-ws.doubao.com",
         }
+
+
+def _is_auth_error(message: str) -> bool:
+    normalized = message.lower()
+    return any(
+        marker in normalized
+        for marker in (
+            "auth",
+            "unauthorized",
+            "forbidden",
+            "token",
+            "app_key",
+            "permission",
+        )
+    )
