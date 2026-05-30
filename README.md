@@ -1,34 +1,55 @@
 # Doubao ASR for Home Assistant
 
-Home Assistant Wyoming speech-to-text add-on backed by Doubao ASR.
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+[![Home Assistant Add-on](https://img.shields.io/badge/Home%20Assistant-Add--on-41BDF5.svg)](config.yaml)
+[![Wyoming Protocol](https://img.shields.io/badge/protocol-Wyoming-orange.svg)](https://www.home-assistant.io/integrations/wyoming/)
+[![Status: MVP](https://img.shields.io/badge/status-MVP-yellow.svg)](#后续方向--roadmap)
 
-This project assumes the Doubao ASR interface is publicly available for this
-use case and should be used in accordance with the service terms.
+非官方 Home Assistant Wyoming 语音识别插件，基于豆包 ASR。
 
-This is an unofficial project. It is not affiliated with, endorsed by, or
-maintained by Doubao, ByteDance, Home Assistant, or Nabu Casa.
+Unofficial Home Assistant Wyoming speech-to-text add-on backed by Doubao ASR.
 
-## What is included
+本项目假定豆包 ASR 接口在当前使用场景下可公开访问，并要求使用者自行遵守相关服务条款、法律法规、隐私和数据保护要求。本项目不隶属于豆包、字节跳动、Home Assistant 或 Nabu Casa，也未获得其认可、赞助或维护。
 
-- A Wyoming ASR server on port `10300`
-- Home Assistant add-on metadata (`config.yaml`, `build.yaml`, `Dockerfile`)
-- Doubao device registration and token persistence in `/data/doubao_credentials.json`
-- WebSocket/protobuf ASR session flow based on `EvanDbg/doubao-ime-win`
-- PCM conversion through Wyoming and Opus encoding before sending to Doubao
+This project assumes the Doubao ASR interface is publicly available for this use case. Users are responsible for complying with applicable service terms, laws, privacy rules, and data protection requirements. This project is not affiliated with, endorsed by, sponsored by, or maintained by Doubao, ByteDance, Home Assistant, or Nabu Casa.
 
-## Upstream API source
+## 功能 / Features
 
-The Doubao ASR API/protocol definitions in this repository are derived from the
-upstream open source project `EvanDbg/doubao-ime-win`, especially:
+- 在 `10300/tcp` 提供 Wyoming ASR 服务。
+- 提供 Home Assistant add-on 元数据：`config.yaml`、`build.yaml`、`Dockerfile`。
+- 自动注册/缓存豆包设备信息和 token 到 `/data/doubao_credentials.json`。
+- 基于 `EvanDbg/doubao-ime-win` 的 WebSocket/protobuf ASR 会话流程。
+- 将 Wyoming PCM 音频转换为 16 kHz mono 20 ms Opus 帧后发送。
+
+- Exposes a Wyoming ASR server on `10300/tcp`.
+- Includes Home Assistant add-on metadata: `config.yaml`, `build.yaml`, `Dockerfile`.
+- Registers and persists Doubao device credentials in `/data/doubao_credentials.json`.
+- Implements the WebSocket/protobuf ASR session flow based on `EvanDbg/doubao-ime-win`.
+- Converts Wyoming PCM audio into 16 kHz mono 20 ms Opus frames before sending.
+
+## 上游来源 / Upstream Source
+
+本仓库中的豆包 ASR API/协议定义来源于上游开源项目 `EvanDbg/doubao-ime-win`，尤其是：
+
+The Doubao ASR API/protocol definitions in this repository are derived from the upstream open source project `EvanDbg/doubao-ime-win`, especially:
 
 - `src/asr/client.rs`: https://github.com/EvanDbg/doubao-ime-win/blob/main/src/asr/client.rs
 - `src/asr/constants.rs`: https://github.com/EvanDbg/doubao-ime-win/blob/main/src/asr/constants.rs
 
-The upstream project README states that its implementation is based on analysis
-of the Doubao input method client protocol and is not an official API. This
-repository preserves that limitation. See `NOTICE.md` and `DISCLAIMER.md`.
+上游项目说明其实现基于对豆包输入法客户端协议的分析，并非官方 API。本仓库保留这一限制说明。更多见 `NOTICE.md` 和 `DISCLAIMER.md`。
 
-## Local development
+The upstream project states that its implementation is based on analysis of the Doubao input method client protocol and is not an official API. This repository preserves that limitation. See `NOTICE.md` and `DISCLAIMER.md`.
+
+## 使用 / Home Assistant
+
+将本仓库作为 Home Assistant 本地/自定义 add-on 仓库添加，安装 `Doubao ASR`，然后通过 Wyoming Protocol 集成发现或手动添加。插件监听 `10300/tcp`。
+
+Add this repository as a local/custom Home Assistant add-on repository, install `Doubao ASR`, then discover or add it through the Wyoming Protocol integration. The add-on listens on `10300/tcp`.
+
+## 开发 / Development
+
+使用 `uv`：
 
 Use `uv`:
 
@@ -41,51 +62,40 @@ uv run wyoming-doubao-asr \
   --log-level DEBUG
 ```
 
-Smoke-test the Wyoming service:
+Wyoming 烟测 / Wyoming smoke test:
 
 ```bash
 printf '{ "type": "describe" }\n' | nc -w 1 127.0.0.1 10300
 ```
 
-Current local verification:
+当前本地验证 / Current local verification:
 
 - `uv run pytest`: 11 passed.
 - Wyoming smoke test: passed.
-- Docker image build: passed locally.
-- Container Wyoming smoke test: passed locally.
+- Docker image build: passed.
+- Container Wyoming smoke test: passed.
 
-## Home Assistant
+## 后续方向 / Roadmap
 
-Add this repository as a local/custom add-on repository, install `Doubao ASR`,
-then add or discover it through the Wyoming Protocol integration. The add-on
-listens on `10300/tcp`.
+- 在真实 Home Assistant OS 和 Supervised 环境中验证镜像、安装和 Wyoming 发现。
+- 对上游 ASR 服务执行端到端实时语音识别测试。
+- 加固 WebSocket 超时、重试、token 刷新和错误日志。
+- 增加 CI 测试和发布检查。
 
-## Roadmap
-
-- Validate the add-on image and Wyoming discovery in real Home Assistant OS and
-  Supervised environments.
+- Validate image build, installation, and Wyoming discovery in real Home Assistant OS and Supervised environments.
 - Run end-to-end live ASR tests against the upstream service.
-- Harden websocket timeout, retry, token refresh, and error reporting.
-- Add CI for tests and release checks.
+- Harden websocket timeout, retry, token refresh, and error logging.
+- Add CI tests and release checks.
 
-Non-goals: bypassing access controls, claiming official Doubao API support, or
-adding non-ASR features such as TTS and wake-word detection.
+非目标：绕过访问控制、宣称官方豆包 API 支持、或添加 TTS/唤醒词等非 ASR 功能。
 
-## Notes
+Non-goals: bypassing access controls, claiming official Doubao API support, or adding non-ASR features such as TTS and wake-word detection.
 
-The current implementation is an MVP. It validates the local Wyoming protocol,
-protobuf framing, and client sequencing with tests, but real Doubao ASR behavior
-still depends on the availability and terms of the upstream service.
+## 合规 / Legal
 
-## Legal and compliance
-
-- License: MIT License. See `LICENSE`.
-- Upstream protocol attribution: see `NOTICE.md`.
-- Unofficial project status, user responsibilities, third-party voice service
-  notice, and warranty disclaimer: see `DISCLAIMER.md`.
-
-Users are responsible for confirming that their use complies with applicable
-service terms, laws, privacy rules, and data protection requirements.
+- 许可证 / License: MIT License. See `LICENSE`.
+- 上游协议来源 / Upstream attribution: see `NOTICE.md`.
+- 非官方状态、用户责任、第三方语音服务提示和免责声明 / Unofficial status, user responsibilities, third-party voice service notice, and warranty disclaimer: see `DISCLAIMER.md`.
 
 ## License
 
