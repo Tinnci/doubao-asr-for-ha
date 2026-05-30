@@ -47,6 +47,8 @@ Smoke-test the Wyoming service:
 printf '{ "type": "describe" }\n' | nc -w 1 127.0.0.1 10300
 ```
 
+See `TESTING.md` for the current verification matrix and smoke-test details.
+
 ## Home Assistant
 
 Add this repository as a local/custom add-on repository, install `Doubao ASR`,
@@ -58,6 +60,8 @@ listens on `10300/tcp`.
 The current implementation is an MVP. It validates the local Wyoming protocol,
 protobuf framing, and client sequencing with tests, but real Doubao ASR behavior
 still depends on the availability and terms of the upstream service.
+
+See `ROADMAP.md` for the planned validation and hardening work.
 
 ## License
 
