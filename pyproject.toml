@@ -1,0 +1,29 @@
+[project]
+name = "wyoming-doubao-asr"
+version = "0.1.0"
+description = "Home Assistant Wyoming ASR server backed by Doubao ASR"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+    "aiohttp>=3.9.0",
+    "opuslib>=3.0.1",
+    "wyoming[zeroconf]>=1.8.0",
+]
+
+[project.scripts]
+wyoming-doubao-asr = "wyoming_doubao_asr.__main__:run"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
