@@ -47,7 +47,11 @@ Smoke-test the Wyoming service:
 printf '{ "type": "describe" }\n' | nc -w 1 127.0.0.1 10300
 ```
 
-See `TESTING.md` for the current verification matrix and smoke-test details.
+Current local verification:
+
+- `uv run pytest`: 11 passed.
+- Wyoming smoke test: passed.
+- Docker image build: not verified locally because Docker daemon was unavailable.
 
 ## Home Assistant
 
@@ -55,13 +59,22 @@ Add this repository as a local/custom add-on repository, install `Doubao ASR`,
 then add or discover it through the Wyoming Protocol integration. The add-on
 listens on `10300/tcp`.
 
+## Roadmap
+
+- Validate the add-on image and Wyoming discovery in real Home Assistant OS and
+  Supervised environments.
+- Run end-to-end live ASR tests against the upstream service.
+- Harden websocket timeout, retry, token refresh, and error reporting.
+- Add CI for tests and release checks.
+
+Non-goals: bypassing access controls, claiming official Doubao API support, or
+adding non-ASR features such as TTS and wake-word detection.
+
 ## Notes
 
 The current implementation is an MVP. It validates the local Wyoming protocol,
 protobuf framing, and client sequencing with tests, but real Doubao ASR behavior
 still depends on the availability and terms of the upstream service.
-
-See `ROADMAP.md` for the planned validation and hardening work.
 
 ## License
 
