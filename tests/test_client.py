@@ -1,6 +1,8 @@
 import json
+from urllib.parse import parse_qs, urlparse
 
 from wyoming_doubao_asr.client import DoubaoAsrClient, DoubaoAsrError
+from wyoming_doubao_asr.constants import APP_NAME, PROTO_VERSION, VERSION_CODE
 from wyoming_doubao_asr.device import DeviceCredentials
 from wyoming_doubao_asr.protocol import (
     FRAME_STATE_FIRST,
@@ -113,8 +115,16 @@ async def test_transcribe_pcm_runs_doubao_session_sequence() -> None:
     assert requests[4]["frame_state"] == FRAME_STATE_LAST
     assert requests[5]["method_name"] == "FinishSession"
     assert websocket.closed is True
-    assert "device_id=device-1" in transport.connect_calls[0][0]
-    assert transport.connect_calls[0][1]["proto-version"] == "v2"
+    query = parse_qs(urlparse(transport.connect_calls[0][0]).query)
+    assert query["aid"] == ["401734"]
+    assert query["app_name"] == [APP_NAME]
+    assert query["did"] == ["device-1"]
+    assert query["device_id"] == ["device-1"]
+    assert query["iid"] == ["install-1"]
+    assert query["install_id"] == ["install-1"]
+    assert query["version_code"] == [str(VERSION_CODE)]
+    assert query["update_version_code"] == [str(VERSION_CODE)]
+    assert transport.connect_calls[0][1]["proto-version"] == PROTO_VERSION
 
 
 async def test_transcribe_pcm_raises_on_start_task_error() -> None:

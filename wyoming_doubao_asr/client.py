@@ -9,18 +9,30 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Protocol
+from urllib.parse import urlencode
 
 import aiohttp
 import opuslib
 
 from .audio import iter_pcm_frames
 from .constants import (
+    ACCESS,
     AID,
+    APP_NAME,
+    CHANNEL,
     CHANNELS,
+    DEVICE_BRAND,
+    DEVICE_PLATFORM,
+    DEVICE_TYPE,
     FRAME_DURATION_MS,
+    FRONTIER_HOST,
+    OS_VERSION,
+    PROTO_VERSION,
     SAMPLE_RATE,
     SAMPLE_WIDTH,
     USER_AGENT,
+    VERSION_CODE,
+    VERSION_NAME,
     WEBSOCKET_URL,
 )
 from .device import DeviceCredentials
@@ -183,7 +195,7 @@ class DoubaoAsrClient:
     ) -> str:
         try:
             ws = await self._transport.connect(
-                self._ws_url(credentials.device_id),
+                self._ws_url(credentials),
                 self._headers(),
             )
         except Exception as err:
@@ -360,16 +372,43 @@ class DoubaoAsrClient:
             if response.response_type is ResponseType.SESSION_FINISHED:
                 return final_text
 
-    def _ws_url(self, device_id: str) -> str:
-        return f"{WEBSOCKET_URL}?aid={AID}&device_id={device_id}"
+    def _ws_url(self, credentials: DeviceCredentials) -> str:
+        return f"{WEBSOCKET_URL}?{urlencode(_frontier_query(credentials))}"
 
     def _headers(self) -> dict[str, str]:
         return {
             "User-Agent": USER_AGENT,
-            "proto-version": "v2",
+            "proto-version": PROTO_VERSION,
             "x-custom-keepalive": "true",
-            "Host": "frontier-audio-ime-ws.doubao.com",
+            "Host": FRONTIER_HOST,
         }
+
+
+def _frontier_query(credentials: DeviceCredentials) -> dict[str, str]:
+    """Return the identity query parameters for the websocket connection."""
+    return {
+        "uid": "0",
+        "aid": str(AID),
+        "app_name": APP_NAME,
+        "did": credentials.device_id,
+        "device_id": credentials.device_id,
+        "iid": credentials.install_id,
+        "install_id": credentials.install_id,
+        "channel": CHANNEL,
+        "os_version": OS_VERSION,
+        "version_code": str(VERSION_CODE),
+        "update_version_code": str(VERSION_CODE),
+        "version_name": VERSION_NAME,
+        "device_platform": DEVICE_PLATFORM,
+        "device_type": DEVICE_TYPE,
+        "device_brand": DEVICE_BRAND,
+        "ac": ACCESS,
+        "ip": "0",
+        "user_agent": "",
+        "forwarded": "",
+        "target": "",
+        "mobile": "",
+    }
 
 
 def _is_auth_error(message: str) -> bool:

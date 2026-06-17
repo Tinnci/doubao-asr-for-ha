@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any
 
-from .constants import SERVICE_NAME
+from .constants import AID, APP_NAME, SERVICE_NAME, VERSION_CODE, VERSION_NAME
 from .protobuf import encode_bytes, encode_int32, encode_string, iter_fields
 
 FRAME_STATE_UNSPECIFIED = 0
@@ -282,12 +282,16 @@ def _session_config(device_id: str) -> dict[str, Any]:
         "enable_punctuation": True,
         "enable_speech_rejection": False,
         "extra": {
-            "app_name": "com.android.chrome",
+            "aid": str(AID),
+            "app_name": APP_NAME,
             "cell_compress_rate": 8,
             "did": device_id,
             "enable_asr_threepass": True,
             "enable_asr_twopass": True,
             "input_mode": "tool",
+            "update_version_code": str(VERSION_CODE),
+            "version_code": str(VERSION_CODE),
+            "version_name": VERSION_NAME,
         },
     }
 

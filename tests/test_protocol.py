@@ -1,6 +1,11 @@
 import json
 
-from wyoming_doubao_asr.constants import SERVICE_NAME
+from wyoming_doubao_asr.constants import (
+    APP_NAME,
+    SERVICE_NAME,
+    VERSION_CODE,
+    VERSION_NAME,
+)
 from wyoming_doubao_asr.protocol import (
     FRAME_STATE_FIRST,
     FRAME_STATE_UNSPECIFIED,
@@ -39,6 +44,9 @@ def test_build_start_session_encodes_json_session_config() -> None:
         "sample_rate": 16000,
     }
     assert payload["extra"]["did"] == "device-1"
+    assert payload["extra"]["app_name"] == APP_NAME
+    assert payload["extra"]["version_code"] == str(VERSION_CODE)
+    assert payload["extra"]["version_name"] == VERSION_NAME
     assert payload["extra"]["enable_asr_twopass"] is True
 
 

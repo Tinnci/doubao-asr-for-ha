@@ -39,7 +39,6 @@ Homepage = "https://github.com/Tinnci/doubao-asr-for-ha"
 Repository = "https://github.com/Tinnci/doubao-asr-for-ha"
 Issues = "https://github.com/Tinnci/doubao-asr-for-ha/issues"
 Source = "https://github.com/Tinnci/doubao-asr-for-ha"
-Upstream = "https://github.com/EvanDbg/doubao-ime-win"
 
 [project.scripts]
 wyoming-doubao-asr = "wyoming_doubao_asr.__main__:run"

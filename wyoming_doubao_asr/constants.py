@@ -1,15 +1,12 @@
-"""Doubao ASR protocol constants.
-
-Values mirror the public reference implementation in EvanDbg/doubao-ime-win.
-"""
+"""Constants for the Doubao ASR Wyoming client."""
 
 REGISTER_URL = "https://log.snssdk.com/service/2/device_register/"
 SETTINGS_URL = "https://is.snssdk.com/service/settings/v3/"
-WEBSOCKET_URL = "wss://frontier-audio-ime-ws.doubao.com/ocean/api/v1/ws"
+FRONTIER_HOST = "frontier-audio-ime-ws.doubao.com"
+WEBSOCKET_URL = f"wss://{FRONTIER_HOST}/ocean/api/v1/ws"
 
-# IMPORTANT: VERSION_CODE/VERSION_NAME must track the *current* Doubao IME
-# release. The backend deprecates old client versions and rejects them with
-# "service discovery failure". Bump these from the latest APK when ASR breaks.
+# Client identity fields. Update VERSION_CODE / VERSION_NAME when the upstream
+# service requires a newer client version.
 AID = 401734
 APP_NAME = "oime"
 VERSION_CODE = 100311008
@@ -38,6 +35,8 @@ USER_AGENT = (
     "Build/BP2A.250605.031.A2; Cronet/TTNetVersion:94cf429a 2025-11-17 "
     "QuicVersion:1f89f732 2025-05-08)"
 )
+
+PROTO_VERSION = "v2"
 
 SAMPLE_RATE = 16000
 CHANNELS = 1

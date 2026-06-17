@@ -92,8 +92,8 @@ class DoubaoEventHandler(AsyncEventHandler):
 
 def build_info() -> Info:
     attribution = Attribution(
-        name="EvanDbg/doubao-ime-win",
-        url="https://github.com/EvanDbg/doubao-ime-win",
+        name="doubao-asr-for-ha",
+        url="https://github.com/Tinnci/doubao-asr-for-ha",
     )
     return Info(
         asr=[
