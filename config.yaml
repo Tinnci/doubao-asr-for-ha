@@ -1,5 +1,5 @@
 ---
-version: 0.1.1
+version: 0.1.2
 slug: doubao_asr
 name: Doubao ASR
 description: Unofficial Home Assistant Wyoming speech-to-text add-on backed by Doubao ASR

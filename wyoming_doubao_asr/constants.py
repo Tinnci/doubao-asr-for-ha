@@ -7,10 +7,13 @@ REGISTER_URL = "https://log.snssdk.com/service/2/device_register/"
 SETTINGS_URL = "https://is.snssdk.com/service/settings/v3/"
 WEBSOCKET_URL = "wss://frontier-audio-ime-ws.doubao.com/ocean/api/v1/ws"
 
+# IMPORTANT: VERSION_CODE/VERSION_NAME must track the *current* Doubao IME
+# release. The backend deprecates old client versions and rejects them with
+# "service discovery failure". Bump these from the latest APK when ASR breaks.
 AID = 401734
 APP_NAME = "oime"
-VERSION_CODE = 100102018
-VERSION_NAME = "1.1.2"
+VERSION_CODE = 100311008
+VERSION_NAME = "1.3.11"
 CHANNEL = "official"
 PACKAGE = "com.bytedance.android.doubaoime"
 
@@ -30,7 +33,7 @@ ROM = "UP1A.231005.007"
 ROM_VERSION = "UP1A.231005.007"
 
 USER_AGENT = (
-    "com.bytedance.android.doubaoime/100102018 "
+    "com.bytedance.android.doubaoime/100311008 "
     "(Linux; U; Android 16; en_US; Pixel 7 Pro; "
     "Build/BP2A.250605.031.A2; Cronet/TTNetVersion:94cf429a 2025-11-17 "
     "QuicVersion:1f89f732 2025-05-08)"
