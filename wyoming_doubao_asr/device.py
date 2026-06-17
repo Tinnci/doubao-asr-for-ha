@@ -49,7 +49,7 @@ class DeviceCredentials:
     token: str
 
     @classmethod
-    def generated(cls) -> "DeviceCredentials":
+    def generated(cls) -> DeviceCredentials:
         return cls(
             device_id="",
             install_id="",
@@ -64,7 +64,7 @@ class DeviceCredentials:
         return bool(self.device_id and self.token)
 
     @classmethod
-    def load(cls, path: Path) -> "DeviceCredentials":
+    def load(cls, path: Path) -> DeviceCredentials:
         return cls(**json.loads(path.read_text(encoding="utf-8")))
 
     def save(self, path: Path) -> None:
@@ -124,14 +124,16 @@ async def register_device(credentials: DeviceCredentials) -> None:
         "_gen_time": current_time_ms(),
     }
 
-    async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
-        async with session.post(
+    async with (
+        aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session,
+        session.post(
             REGISTER_URL,
             params=_common_params(credentials),
             json=body,
-        ) as response:
-            response.raise_for_status()
-            data = await response.json()
+        ) as response,
+    ):
+        response.raise_for_status()
+        data = await response.json()
 
     device_id = int(data.get("device_id") or 0)
     install_id = int(data.get("install_id") or 0)
@@ -147,15 +149,18 @@ async def get_asr_token(credentials: DeviceCredentials) -> None:
     params = _common_params(credentials)
     params["device_id"] = credentials.device_id
 
-    async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session:
-        async with session.post(
+    x_ss_stub = hashlib.md5(body.encode(), usedforsecurity=False).hexdigest().upper()
+    async with (
+        aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}) as session,
+        session.post(
             SETTINGS_URL,
             params=params,
             data=body,
-            headers={"x-ss-stub": hashlib.md5(body.encode()).hexdigest().upper()},
-        ) as response:
-            response.raise_for_status()
-            data = await response.json()
+            headers={"x-ss-stub": x_ss_stub},
+        ) as response,
+    ):
+        response.raise_for_status()
+        data = await response.json()
 
     token = (
         data.get("data", {})

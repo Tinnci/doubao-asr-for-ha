@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+from contextlib import suppress
 from functools import partial
 from pathlib import Path
 
@@ -17,7 +18,9 @@ from .handler import DoubaoEventHandler, build_info
 
 async def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--uri", required=True, help="Wyoming URI, e.g. tcp://0.0.0.0:10300")
+    parser.add_argument(
+        "--uri", required=True, help="Wyoming URI, e.g. tcp://0.0.0.0:10300"
+    )
     parser.add_argument(
         "--credentials-file",
         default="/data/doubao_credentials.json",
@@ -34,6 +37,12 @@ async def main() -> None:
         type=float,
         default=15.0,
         help="Timeout for Doubao websocket responses",
+    )
+    parser.add_argument(
+        "--zeroconf-timeout-s",
+        type=float,
+        default=5.0,
+        help="Timeout for Home Assistant Wyoming discovery registration",
     )
     parser.add_argument(
         "--log-level",
@@ -57,17 +66,33 @@ async def main() -> None:
         if not isinstance(server, AsyncTcpServer):
             raise ValueError("zeroconf discovery requires a tcp:// URI")
 
-        from wyoming.zeroconf import HomeAssistantZeroconf
-
-        zeroconf = HomeAssistantZeroconf(
-            name=args.zeroconf,
-            host=server.host,
-            port=server.port,
-        )
-        await zeroconf.register_server()
+        try:
+            await asyncio.wait_for(
+                _register_zeroconf(args.zeroconf, server),
+                timeout=args.zeroconf_timeout_s,
+            )
+        except TimeoutError:
+            logging.getLogger(__name__).warning(
+                "Timed out registering zeroconf discovery; continuing without it"
+            )
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Failed to register zeroconf discovery; continuing without it"
+            )
 
     logging.getLogger(__name__).info("Ready")
     await server.run(partial(DoubaoEventHandler, wyoming_info, doubao_client))
+
+
+async def _register_zeroconf(name: str, server: AsyncTcpServer) -> None:
+    from wyoming.zeroconf import HomeAssistantZeroconf
+
+    zeroconf = HomeAssistantZeroconf(
+        name=name,
+        host=server.host,
+        port=server.port,
+    )
+    await zeroconf.register_server()
 
 
 def run() -> None:
@@ -75,7 +100,5 @@ def run() -> None:
 
 
 if __name__ == "__main__":
-    try:
+    with suppress(KeyboardInterrupt):
         run()
-    except KeyboardInterrupt:
-        pass

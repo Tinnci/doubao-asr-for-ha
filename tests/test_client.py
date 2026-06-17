@@ -6,7 +6,6 @@ from wyoming_doubao_asr.protocol import (
     FRAME_STATE_FIRST,
     FRAME_STATE_LAST,
     FRAME_STATE_MIDDLE,
-    ResponseType,
     decode_request,
     encode_response,
 )
@@ -207,7 +206,9 @@ async def test_transcribe_pcm_refreshes_token_once_on_auth_start_task_error() ->
 
     first_start_task = decode_request(first_websocket.sent[0])
     second_start_task = decode_request(second_websocket.sent[0])
-    second_methods = [decode_request(data)["method_name"] for data in second_websocket.sent]
+    second_methods = [
+        decode_request(data)["method_name"] for data in second_websocket.sent
+    ]
 
     assert text == "打开客厅灯"
     assert refresh_calls == ["expired-token"]

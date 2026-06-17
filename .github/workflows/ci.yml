@@ -29,6 +29,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libopus0
 
+      - name: Run Ruff
+        run: |
+          uv run --with ruff ruff check .
+          uv run --with ruff ruff format . --check
+
       - name: Run tests
         run: uv run pytest
 

@@ -1,4 +1,4 @@
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-debian:bookworm
+ARG BUILD_FROM=debian:bookworm-slim
 FROM ghcr.io/astral-sh/uv:0.9.26 AS uv
 
 FROM ${BUILD_FROM}
@@ -27,7 +27,7 @@ WORKDIR /
 COPY rootfs /
 RUN chmod +x /run.sh
 
-HEALTHCHECK --start-period=30s \
+HEALTHCHECK --start-period=60s \
     CMD echo '{ "type": "describe" }' \
     | nc -w 1 localhost 10300 \
     | grep -q "doubao-asr" \

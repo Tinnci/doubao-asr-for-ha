@@ -1,0 +1,60 @@
+target-version = "py311"
+line-length = 88
+
+[lint]
+select = ["ALL"]
+ignore = [
+    # Ruff formatter handles line wrapping and trailing commas.
+    "COM812",
+    "ISC001",
+
+    # This is a small protocol bridge, not a public SDK. Module/function names
+    # are already descriptive enough without forcing blanket docstrings.
+    "D100",
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D105",
+    "D107",
+    "D203",
+    "D213",
+
+    # Protocol encoding code is clearer with field numbers near the wire mapping.
+    "PLR2004",
+
+    # ASR protocol methods naturally take several wire-level fields.
+    "PLR0913",
+
+    # The response parser mirrors a finite set of protocol message outcomes.
+    "PLR0911",
+    "PLR0912",
+
+    # Lazy optional imports keep the base CLI startup path small.
+    "PLC0415",
+
+    # Type-checking import moves are not worth the runtime readability cost here.
+    "TC002",
+    "TC003",
+
+    # Exception strings here are short boundary errors surfaced in HA logs.
+    "EM101",
+    "EM102",
+    "TRY003",
+]
+
+[lint.mccabe]
+max-complexity = 25
+
+[lint.per-file-ignores]
+"tests/**" = [
+    "ANN001",
+    "ANN202",
+    "ARG002",
+    "PLW0108",
+    "PT017",
+    "S101",
+    "S105",
+    "S106",
+    "S607",
+]

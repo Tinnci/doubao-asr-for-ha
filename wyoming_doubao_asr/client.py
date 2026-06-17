@@ -201,7 +201,9 @@ class DoubaoAsrClient:
 
             _LOGGER.debug("Doubao ASR StartSession request_id=%s", request_id)
             await ws.send_bytes(
-                build_start_session(request_id, credentials.token, credentials.device_id)
+                build_start_session(
+                    request_id, credentials.token, credentials.device_id
+                )
             )
             await self._expect(
                 ws,
@@ -281,7 +283,8 @@ class DoubaoAsrClient:
                     await result
 
     async def _refresh_credentials_now(self) -> DeviceCredentials:
-        assert self._refresh_credentials is not None
+        if self._refresh_credentials is None:
+            raise RuntimeError("credential refresh callback is not configured")
         credentials = self._refresh_credentials()
         if inspect.isawaitable(credentials):
             return await credentials

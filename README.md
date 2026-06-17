@@ -74,10 +74,13 @@ services:
       - ./doubao-asr-data:/data
 ```
 
-The container uses default options when `/data/options.json` is missing. To override them, create:
+The container uses default options when `/data/options.json` is missing. Standalone
+Docker mode disables zeroconf by default so the Wyoming TCP server starts reliably;
+add the Wyoming integration manually in Home Assistant with host `127.0.0.1` or the
+Docker host IP and port `10300`. To override options, create:
 
 ```json
-{"debug_logging": false, "response_timeout_s": 15}
+{"debug_logging": false, "response_timeout_s": 15, "zeroconf_enabled": false}
 ```
 
 ## 开发 / Development

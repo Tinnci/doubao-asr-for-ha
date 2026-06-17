@@ -46,7 +46,9 @@ def encode_string(field_number: int, value: str) -> bytes:
         return b""
 
     raw = value.encode("utf-8")
-    return encode_key(field_number, WIRE_LENGTH_DELIMITED) + encode_varint(len(raw)) + raw
+    return (
+        encode_key(field_number, WIRE_LENGTH_DELIMITED) + encode_varint(len(raw)) + raw
+    )
 
 
 def encode_bytes(field_number: int, value: bytes) -> bytes:

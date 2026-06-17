@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from typing import Protocol
 
 from wyoming.asr import Transcribe, Transcript
@@ -21,7 +22,7 @@ _LOGGER = logging.getLogger(__name__)
 class TranscriptionClient(Protocol):
     async def transcribe_pcm(
         self,
-        pcm_chunks,
+        pcm_chunks: Iterable[bytes],
         *,
         language: str | None = None,
     ) -> str:
@@ -35,8 +36,8 @@ class DoubaoEventHandler(AsyncEventHandler):
         self,
         wyoming_info: Info,
         client: TranscriptionClient,
-        *args,
-        **kwargs,
+        *args: object,
+        **kwargs: object,
     ) -> None:
         super().__init__(*args, **kwargs)
         self._info_event = wyoming_info.event()
@@ -79,7 +80,9 @@ class DoubaoEventHandler(AsyncEventHandler):
                 )
                 raise
             _LOGGER.info("Transcript: %s", text)
-            await self.write_event(Transcript(text=text, language=self._language).event())
+            await self.write_event(
+                Transcript(text=text, language=self._language).event()
+            )
             self._audio_chunks.clear()
             self._language = None
             return False
