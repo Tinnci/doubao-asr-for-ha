@@ -40,6 +40,7 @@ from .protocol import (
     FRAME_STATE_FIRST,
     FRAME_STATE_LAST,
     FRAME_STATE_MIDDLE,
+    AsrResponse,
     ResponseType,
     build_finish_session,
     build_start_session,
@@ -102,6 +103,7 @@ RefreshCredentials = Callable[
     [],
     DeviceCredentials | Awaitable[DeviceCredentials],
 ]
+AsrResultCallback = Callable[[AsrResponse], object | Awaitable[object]]
 
 
 class DoubaoAsrError(RuntimeError):
@@ -147,6 +149,7 @@ class DoubaoAsrClient:
         pcm_chunks: Iterable[bytes],
         *,
         language: str | None = None,
+        on_result: AsrResultCallback | None = None,
     ) -> str:
         del language
         request_id = self._request_id_factory()
@@ -167,6 +170,7 @@ class DoubaoAsrClient:
                 audio_chunks,
                 credentials,
                 request_id,
+                on_result,
             )
         except DoubaoAsrError as err:
             if not (
@@ -185,6 +189,7 @@ class DoubaoAsrClient:
                 audio_chunks,
                 refreshed_credentials,
                 request_id,
+                on_result,
             )
 
     async def _transcribe_with_credentials(
@@ -192,6 +197,7 @@ class DoubaoAsrClient:
         pcm_chunks: list[bytes],
         credentials: DeviceCredentials,
         request_id: str,
+        on_result: AsrResultCallback | None,
     ) -> str:
         try:
             ws = await self._transport.connect(
@@ -279,7 +285,7 @@ class DoubaoAsrClient:
                     request_id=request_id,
                 ) from err
 
-            text = await self._read_transcript(ws, request_id)
+            text = await self._read_transcript(ws, request_id, on_result)
             _LOGGER.info(
                 "Doubao ASR request completed request_id=%s transcript_chars=%s",
                 request_id,
@@ -341,7 +347,12 @@ class DoubaoAsrClient:
                 request_id=request_id,
             )
 
-    async def _read_transcript(self, ws: DoubaoWebSocket, request_id: str) -> str:
+    async def _read_transcript(
+        self,
+        ws: DoubaoWebSocket,
+        request_id: str,
+        on_result: AsrResultCallback | None = None,
+    ) -> str:
         final_text = ""
 
         while True:
@@ -366,11 +377,37 @@ class DoubaoAsrClient:
                     request_id=request_id,
                 )
 
+            if response.response_type in {
+                ResponseType.VAD_START,
+                ResponseType.INTERIM_RESULT,
+                ResponseType.FINAL_RESULT,
+            }:
+                await self._notify_result(on_result, response, request_id)
+
             if response.response_type is ResponseType.FINAL_RESULT and response.text:
                 final_text = response.text
 
             if response.response_type is ResponseType.SESSION_FINISHED:
                 return final_text
+
+    async def _notify_result(
+        self,
+        callback: AsrResultCallback | None,
+        response: AsrResponse,
+        request_id: str,
+    ) -> None:
+        if callback is None:
+            return
+        try:
+            result = callback(response)
+            if inspect.isawaitable(result):
+                await result
+        except Exception:
+            _LOGGER.exception(
+                "Doubao ASR result callback failed request_id=%s response_type=%s",
+                request_id,
+                response.response_type.name,
+            )
 
     def _ws_url(self, credentials: DeviceCredentials) -> str:
         return f"{WEBSOCKET_URL}?{urlencode(_frontier_query(credentials))}"

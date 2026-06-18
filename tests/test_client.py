@@ -8,6 +8,7 @@ from wyoming_doubao_asr.protocol import (
     FRAME_STATE_FIRST,
     FRAME_STATE_LAST,
     FRAME_STATE_MIDDLE,
+    ResponseType,
     decode_request,
     encode_response,
 )
@@ -125,6 +126,107 @@ async def test_transcribe_pcm_runs_doubao_session_sequence() -> None:
     assert query["version_code"] == [str(VERSION_CODE)]
     assert query["update_version_code"] == [str(VERSION_CODE)]
     assert transport.connect_calls[0][1]["proto-version"] == PROTO_VERSION
+
+
+async def test_transcribe_pcm_reports_interim_and_final_results() -> None:
+    websocket = FakeWebSocket()
+    websocket.responses = [
+        encode_response(message_type="TaskStarted"),
+        encode_response(message_type="SessionStarted"),
+        encode_response(
+            message_type="",
+            result_json=json.dumps(
+                {
+                    "results": [
+                        {
+                            "text": "打开",
+                            "is_interim": True,
+                            "is_vad_finished": False,
+                        }
+                    ],
+                    "extra": {"packet_number": 1},
+                },
+                ensure_ascii=False,
+            ),
+        ),
+        encode_response(
+            message_type="",
+            result_json=json.dumps(
+                {
+                    "results": [
+                        {
+                            "text": "打开客厅灯",
+                            "is_interim": False,
+                            "is_vad_finished": True,
+                        }
+                    ],
+                    "extra": {"packet_number": 2},
+                },
+                ensure_ascii=False,
+            ),
+        ),
+        encode_response(message_type="SessionFinished"),
+    ]
+    transport = FakeTransport(websocket)
+    client = DoubaoAsrClient(
+        credentials_provider=lambda: DeviceCredentials(
+            device_id="device-1",
+            install_id="install-1",
+            cdid="cdid-1",
+            openudid="open-1",
+            clientudid="client-1",
+            token="token-1",
+        ),
+        transport=transport,
+        encoder_factory=lambda: FakeEncoder(),
+        request_id_factory=lambda: "request-1",
+        time_ms_factory=lambda: 1000,
+    )
+    results = []
+
+    async def on_result(response) -> None:
+        results.append((response.response_type, response.text, response.packet_number))
+
+    text = await client.transcribe_pcm(
+        [b"\x01\x00" * 640],
+        language="zh",
+        on_result=on_result,
+    )
+
+    assert text == "打开客厅灯"
+    assert results == [
+        (ResponseType.INTERIM_RESULT, "打开", 1),
+        (ResponseType.FINAL_RESULT, "打开客厅灯", 2),
+    ]
+
+
+async def test_transcribe_pcm_ignores_result_callback_errors() -> None:
+    websocket = FakeWebSocket()
+    client = DoubaoAsrClient(
+        credentials_provider=lambda: DeviceCredentials(
+            device_id="device-1",
+            install_id="install-1",
+            cdid="cdid-1",
+            openudid="open-1",
+            clientudid="client-1",
+            token="token-1",
+        ),
+        transport=FakeTransport(websocket),
+        encoder_factory=lambda: FakeEncoder(),
+        request_id_factory=lambda: "request-1",
+        time_ms_factory=lambda: 1000,
+    )
+
+    def on_result(_response) -> None:
+        raise RuntimeError("lock screen offline")
+
+    text = await client.transcribe_pcm(
+        [b"\x01\x00" * 640],
+        language="zh",
+        on_result=on_result,
+    )
+
+    assert text == "打开客厅灯"
 
 
 async def test_transcribe_pcm_raises_on_start_task_error() -> None:
