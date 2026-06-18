@@ -4,7 +4,7 @@ version = "0.1.2"
 description = "Home Assistant Wyoming ASR server backed by Doubao ASR"
 readme = "README.md"
 requires-python = ">=3.11"
-license = "MIT"
+license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
 authors = [
     { name = "doubao-asr-for-ha contributors" },
 ]
@@ -20,7 +20,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Framework :: AsyncIO",
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
+    "License :: Other/Proprietary License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

@@ -2,7 +2,7 @@
 
 [English + 简体中文](README.md)
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
 [![CI](https://github.com/Tinnci/doubao-asr-for-ha/actions/workflows/ci.yml/badge.svg)](https://github.com/Tinnci/doubao-asr-for-ha/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Home Assistant Add-on](https://img.shields.io/badge/Home%20Assistant-Add--on-41BDF5.svg)](config.yaml)
@@ -184,11 +184,15 @@ Non-goals:
 
 ## Legal / 合规
 
-- License: MIT License. See `LICENSE`.
-- Credits: see `NOTICE.md`.
+- License: PolyForm Noncommercial License 1.0.0. Commercial use is not
+  permitted without a separate license. See `LICENSE`.
+- Credits and upstream MIT notices: see `NOTICE.md`.
 - Unofficial status, user responsibilities, third-party voice service notice,
   and warranty disclaimer: see `DISCLAIMER.md`.
 
 ## License
 
-MIT License. See `LICENSE`.
+Source-available for non-commercial use under the PolyForm Noncommercial
+License 1.0.0. See `LICENSE`.
+
+This is not an OSI open-source license because commercial use is restricted.

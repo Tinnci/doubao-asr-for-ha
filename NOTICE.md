@@ -11,5 +11,8 @@ and does not claim official affiliation or endorsement.
 
 ## License compatibility
 
-`EvanDbg/doubao-ime-win` is distributed under the MIT License. This project is
-also released under the MIT License. See `LICENSE`.
+`EvanDbg/doubao-ime-win` is distributed under the MIT License. That upstream
+license notice remains in effect for upstream-derived portions.
+
+This maintained distribution is source-available for non-commercial use under
+the PolyForm Noncommercial License 1.0.0. See `LICENSE`.
