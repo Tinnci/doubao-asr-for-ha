@@ -33,6 +33,8 @@ or Nabu Casa.
 - Keeps per-request diagnostic metrics such as audio bytes, sent frame count,
   upstream result-event counts, first-result latency, final-result latency,
   transcript length, and failure phase.
+- Can expose the latest in-process metrics through an optional local HTTP
+  endpoint with `--metrics-uri tcp://127.0.0.1:10301`.
 - Redacts tokens from raised errors.
 - Refreshes the token and retries once when `StartTask` fails with an
   authentication/token error.
@@ -49,6 +51,8 @@ or Nabu Casa.
 - 错误日志包含 ASR 阶段和 request id，便于排障。
 - 保留每次请求的诊断指标，包括音频字节数、发送帧数、上游结果事件数、
   首个结果延迟、最终结果延迟、转写长度和失败阶段。
+- 可通过 `--metrics-uri tcp://127.0.0.1:10301` 暴露本地 `/health` 和
+  `/metrics`，供锁屏状态代理或 harness 抓取最近一次请求指标。
 - `StartTask` 认证/token 失败时自动刷新 token 并重试一次。
 
 ## Runtime options / 运行选项
@@ -69,6 +73,7 @@ debug_logging: false
 response_timeout_s: 15
 zeroconf_enabled: false
 zeroconf_timeout_s: 5
+metrics_uri: ""
 ```
 
 Standalone Docker uses the same values when `/data/options.json` is absent. To
@@ -79,7 +84,8 @@ override them, create:
   "debug_logging": false,
   "response_timeout_s": 15,
   "zeroconf_enabled": false,
-  "zeroconf_timeout_s": 5
+  "zeroconf_timeout_s": 5,
+  "metrics_uri": "tcp://127.0.0.1:10301"
 }
 ```
 
@@ -166,6 +172,8 @@ The current test suite covers:
   protocol/client can observe upstream interim results and now keeps request
   metrics, but full end-to-end live partial transcripts require a handler
   refactor that sends audio and reads ASR results concurrently.
+- Use `--metrics-uri tcp://127.0.0.1:10301` to expose `/health` and `/metrics`
+  for local scraping by a display agent or harness.
 - The service expects PCM from Wyoming and sends Opus to Doubao. It does not
   synthesize TTS and does not implement wake word detection.
 - For Home Assistant Container deployments, keep zeroconf disabled unless the
@@ -176,8 +184,6 @@ The current test suite covers:
 - Add real-audio end-to-end ASR tests that cover the full HA voice pipeline.
 - Add a concurrent streaming handler path for live lock-screen
   transcript/status updates while audio is still being captured.
-- Export the in-process request metrics through an optional health/metrics
-  endpoint for deployments that want external scraping.
 - Improve deployment docs for HA OS add-on repository setup and Container
   compose variants.
 

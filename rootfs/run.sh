@@ -10,12 +10,14 @@ debug_logging="false"
 response_timeout_s="15"
 zeroconf_enabled="false"
 zeroconf_timeout_s="5"
+metrics_uri=""
 
 if [[ -f "${OPTIONS_FILE}" ]]; then
   debug_logging="$(jq -r '.debug_logging // false' "${OPTIONS_FILE}")"
   response_timeout_s="$(jq -r '.response_timeout_s // 15' "${OPTIONS_FILE}")"
   zeroconf_enabled="$(jq -r '.zeroconf_enabled // false' "${OPTIONS_FILE}")"
   zeroconf_timeout_s="$(jq -r '.zeroconf_timeout_s // 5' "${OPTIONS_FILE}")"
+  metrics_uri="$(jq -r '.metrics_uri // ""' "${OPTIONS_FILE}")"
 fi
 
 log_level="INFO"
@@ -34,6 +36,10 @@ args=(
 
 if [[ "${zeroconf_enabled}" == "true" ]]; then
   args+=(--zeroconf "doubao-asr")
+fi
+
+if [[ -n "${metrics_uri}" ]]; then
+  args+=(--metrics-uri "${metrics_uri}")
 fi
 
 exec "${args[@]}"

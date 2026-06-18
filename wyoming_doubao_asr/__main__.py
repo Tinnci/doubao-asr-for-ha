@@ -14,6 +14,7 @@ from wyoming.server import AsyncServer, AsyncTcpServer
 from .client import DoubaoAsrClient
 from .device import CredentialStore
 from .handler import DoubaoEventHandler, build_info
+from .metrics import start_metrics_server
 
 
 async def main() -> None:
@@ -45,6 +46,10 @@ async def main() -> None:
         help="Timeout for Home Assistant Wyoming discovery registration",
     )
     parser.add_argument(
+        "--metrics-uri",
+        help="Optional diagnostics HTTP URI, e.g. tcp://127.0.0.1:10301",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -61,6 +66,10 @@ async def main() -> None:
     )
     wyoming_info = build_info()
     server = AsyncServer.from_uri(args.uri)
+    if args.metrics_uri:
+        metrics_server = await start_metrics_server(args.metrics_uri, doubao_client)
+        logging.getLogger(__name__).info("Metrics ready at %s", args.metrics_uri)
+        asyncio.create_task(metrics_server.serve_forever(), name="doubao_asr_metrics")
 
     if args.zeroconf:
         if not isinstance(server, AsyncTcpServer):

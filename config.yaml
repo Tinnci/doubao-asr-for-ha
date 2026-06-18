@@ -1,5 +1,5 @@
 ---
-version: 0.1.4
+version: 0.1.5
 slug: doubao_asr
 name: Doubao ASR / 豆包语音识别
 description: Unofficial Home Assistant Wyoming speech-to-text add-on backed by Doubao ASR / 非官方 Home Assistant Wyoming 豆包语音识别附加组件
@@ -19,8 +19,10 @@ options:
   response_timeout_s: 15
   zeroconf_enabled: false
   zeroconf_timeout_s: 5
+  metrics_uri: ""
 schema:
   debug_logging: bool
   response_timeout_s: float
   zeroconf_enabled: bool
   zeroconf_timeout_s: float
+  metrics_uri: str
