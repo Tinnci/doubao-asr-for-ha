@@ -99,14 +99,17 @@ def build_info() -> Info:
         asr=[
             AsrProgram(
                 name="doubao-asr",
-                description="Doubao ASR via Wyoming",
+                description="Doubao ASR via Wyoming / 通过 Wyoming 接入豆包语音识别",
                 attribution=attribution,
                 installed=True,
                 version=__version__,
                 models=[
                     AsrModel(
                         name="doubao-realtime",
-                        description="Doubao realtime ASR websocket service",
+                        description=(
+                            "Doubao realtime ASR websocket service / "
+                            "豆包实时语音识别 WebSocket 服务"
+                        ),
                         attribution=attribution,
                         installed=True,
                         version=__version__,

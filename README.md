@@ -1,5 +1,7 @@
 # Doubao ASR for Home Assistant
 
+[English + 简体中文](README.md)
+
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![CI](https://github.com/Tinnci/doubao-asr-for-ha/actions/workflows/ci.yml/badge.svg)](https://github.com/Tinnci/doubao-asr-for-ha/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
@@ -41,6 +43,15 @@ or Nabu Casa.
 - `StartTask` 认证/token 失败时自动刷新 token 并重试一次。
 
 ## Runtime options / 运行选项
+
+Language support note / 多语言说明：
+
+- Repository docs and Home Assistant add-on metadata are maintained in English
+  and Simplified Chinese.
+- The current upstream ASR capability is advertised as `zh` in Wyoming
+  `Describe`. Do not treat the bilingual metadata as English ASR support.
+- 文档和 Home Assistant add-on 元数据会同时维护英文和简体中文。
+- 当前上游识别能力在 Wyoming `Describe` 中仍声明为 `zh`。双语元数据不代表英文 ASR 已可用。
 
 Home Assistant add-on options:
 
