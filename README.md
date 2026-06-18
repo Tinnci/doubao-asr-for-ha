@@ -6,72 +6,97 @@
 [![Home Assistant Add-on](https://img.shields.io/badge/Home%20Assistant-Add--on-41BDF5.svg)](config.yaml)
 [![Wyoming Protocol](https://img.shields.io/badge/protocol-Wyoming-orange.svg)](https://www.home-assistant.io/integrations/wyoming/)
 
-非官方 Home Assistant Wyoming 语音识别插件，基于豆包 ASR。
+非官方 Home Assistant Wyoming 语音识别服务，基于豆包 ASR。
 
-Unofficial Home Assistant Wyoming speech-to-text add-on backed by Doubao ASR.
+Unofficial Home Assistant Wyoming speech-to-text service backed by Doubao ASR.
 
 本项目要求使用者自行遵守相关服务条款、法律法规、隐私和数据保护要求。本项目不隶属于豆包、字节跳动、Home Assistant 或 Nabu Casa，也未获得其认可、赞助或维护。
 
-Users are responsible for complying with applicable service terms, laws, privacy rules, and data protection requirements. This project is not affiliated with, endorsed by, sponsored by, or maintained by Doubao, ByteDance, Home Assistant, or Nabu Casa.
+Users are responsible for complying with applicable service terms, laws, privacy
+rules, and data protection requirements. This project is not affiliated with,
+endorsed by, sponsored by, or maintained by Doubao, ByteDance, Home Assistant,
+or Nabu Casa.
 
-## 功能 / Features
-
-- 在 `10300/tcp` 提供 Wyoming ASR 服务。
-- 提供 Home Assistant add-on 元数据：`config.yaml`、`build.yaml`、`Dockerfile`。
-- 自动注册/缓存设备凭据和 token 到 `/data/doubao_credentials.json`。
-- 实现基于 WebSocket 的 ASR 会话流程。
-- 将 Wyoming PCM 音频转换为 16 kHz mono 20 ms Opus 帧后发送。
-- 失败日志包含 ASR 阶段和 request id，便于排障。
-- `StartTask` 认证/token 失败时自动刷新 token 并重试一次。
+## Current capabilities / 当前能力
 
 - Exposes a Wyoming ASR server on `10300/tcp`.
-- Includes Home Assistant add-on metadata: `config.yaml`, `build.yaml`, `Dockerfile`.
+- Works as a Home Assistant add-on or as a standalone Docker container.
 - Registers and persists device credentials in `/data/doubao_credentials.json`.
-- Implements a WebSocket-based ASR session flow.
-- Converts Wyoming PCM audio into 16 kHz mono 20 ms Opus frames before sending.
-- Logs the ASR failure phase and request id for troubleshooting.
-- Refreshes the token and retries once when `StartTask` fails with an auth/token error.
+- Uses a WebSocket-based Doubao ASR session.
+- Converts incoming Wyoming PCM into 16 kHz mono 20 ms Opus frames.
+- Logs ASR phase and request id for troubleshooting.
+- Redacts tokens from raised errors.
+- Refreshes the token and retries once when `StartTask` fails with an
+  authentication/token error.
+- Disables zeroconf by default in standalone Docker mode so the TCP server starts
+  reliably.
 
-## 使用 / Home Assistant
+中文概述：
 
-将本仓库作为 Home Assistant 本地/自定义 add-on 仓库添加，安装 `Doubao ASR`，然后通过 Wyoming Protocol 集成发现或手动添加。插件监听 `10300/tcp`。
+- 在 `10300/tcp` 提供 Wyoming ASR 服务。
+- 支持 Home Assistant add-on 和独立 Docker 容器两种运行方式。
+- 自动注册并缓存设备凭据到 `/data/doubao_credentials.json`。
+- 将 Wyoming PCM 音频转换为 16 kHz mono 20 ms Opus 帧后发送给豆包 ASR。
+- 错误日志包含 ASR 阶段和 request id，便于排障。
+- `StartTask` 认证/token 失败时自动刷新 token 并重试一次。
 
-Add this repository as a local/custom Home Assistant add-on repository, install `Doubao ASR`, then discover or add it through the Wyoming Protocol integration. The add-on listens on `10300/tcp`.
+## Runtime options / 运行选项
 
-## HA OS vs Docker
+Home Assistant add-on options:
 
-Home Assistant OS 支持 add-ons：推荐直接添加本仓库并通过 Add-on Store 安装。
+```yaml
+debug_logging: false
+response_timeout_s: 15
+zeroconf_enabled: false
+zeroconf_timeout_s: 5
+```
 
-Home Assistant Container/Docker 不支持 add-ons：需要把本项目作为独立容器运行，再在 Home Assistant 里手动添加 Wyoming integration，地址填容器服务名或宿主机 IP，端口 `10300`。
+Standalone Docker uses the same values when `/data/options.json` is absent. To
+override them, create:
 
-Home Assistant OS supports add-ons: add this repository and install it from the Add-on Store.
+```json
+{
+  "debug_logging": false,
+  "response_timeout_s": 15,
+  "zeroconf_enabled": false,
+  "zeroconf_timeout_s": 5
+}
+```
 
-Home Assistant Container/Docker does not support add-ons: run this project as a separate container, then manually add the Wyoming integration in Home Assistant. Use the container service name or host IP with port `10300`.
+## Home Assistant OS
 
-Minimal Docker Compose example:
+Home Assistant OS supports add-ons. Add this repository as a local/custom add-on
+repository, install `Doubao ASR`, then add it through the Wyoming Protocol
+integration.
+
+Home Assistant OS 支持 add-ons。推荐直接把本仓库添加为本地/自定义 add-on 仓库，在 Add-on Store 安装 `Doubao ASR`，然后通过 Wyoming Protocol 集成发现或手动添加。
+
+## Home Assistant Container / Docker
+
+Home Assistant Container does not support add-ons. Run this project as a
+standalone container and add a Wyoming integration manually in Home Assistant.
+
+Minimal compose example:
 
 ```yaml
 services:
   doubao-asr:
     image: ghcr.io/tinnci/doubao-asr-for-ha:latest
+    container_name: doubao-asr
+    restart: unless-stopped
     ports:
       - "10300:10300"
     volumes:
       - ./doubao-asr-data:/data
 ```
 
-The container uses default options when `/data/options.json` is missing. Standalone
-Docker mode disables zeroconf by default so the Wyoming TCP server starts reliably;
-add the Wyoming integration manually in Home Assistant with host `127.0.0.1` or the
-Docker host IP and port `10300`. To override options, create:
+In Home Assistant, add Wyoming manually with:
 
-```json
-{"debug_logging": false, "response_timeout_s": 15, "zeroconf_enabled": false}
-```
+- host: the Docker host IP, `127.0.0.1`, or the compose service name depending on
+  your network mode,
+- port: `10300`.
 
-## 开发 / Development
-
-使用 `uv`：
+## Development / 开发
 
 Use `uv`:
 
@@ -84,41 +109,65 @@ uv run wyoming-doubao-asr \
   --log-level DEBUG
 ```
 
-Wyoming 烟测 / Wyoming smoke test:
+Wyoming smoke test:
 
 ```bash
 printf '{ "type": "describe" }\n' | nc -w 1 127.0.0.1 10300
 ```
 
-真实 ASR 验证 / Real ASR check:
+Real ASR verification:
 
-1. 准备一段清晰中文的 16 kHz mono signed 16-bit PCM 音频。
-2. 直接发送给 Wyoming ASR 服务。
-3. 确认返回最终转写文本。不要只测 `describe`。
-
-1. Prepare 16 kHz mono signed 16-bit PCM with clear Chinese speech.
+1. Prepare clear Chinese 16 kHz mono signed 16-bit PCM audio.
 2. Feed it directly to the Wyoming ASR service.
-3. Confirm a final transcript is returned. Do not treat `describe` alone as a pass.
+3. Confirm a final transcript is returned.
 
-## 后续方向 / Roadmap
+Do not treat `describe` alone as a pass; it only verifies that the Wyoming server
+is reachable.
 
-- 加固 WebSocket 超时、重试、token 刷新和错误日志。
-- 增加真实音频端到端识别测试，覆盖完整 HA 语音管线。
-- 增加发布检查和版本化 release。
+## Test coverage / 测试覆盖
 
-- Harden websocket timeout, retry, token refresh, and error logging.
+The current test suite covers:
+
+- Wyoming `Describe`,
+- PCM frame splitting,
+- Doubao protocol packet construction/parsing,
+- WebSocket ASR session sequence,
+- token refresh on auth failure,
+- token redaction in errors,
+- add-on run script option mapping,
+- Docker/standalone defaults.
+
+## Operational notes / 运维说明
+
+- ASR quality depends on the upstream satellite capture chain. Wakeword
+  sensitivity, microphone gain, echo cancellation, and TTS playback gates are not
+  controlled by this project.
+- The service expects PCM from Wyoming and sends Opus to Doubao. It does not
+  synthesize TTS and does not implement wake word detection.
+- For Home Assistant Container deployments, keep zeroconf disabled unless the
+  network stack is known to support it reliably.
+
+## Roadmap / 后续方向
+
 - Add real-audio end-to-end ASR tests that cover the full HA voice pipeline.
-- Add release checks and versioned releases.
+- Add richer metrics for latency, transcript length, and upstream ASR failure
+  phase.
+- Improve deployment docs for HA OS add-on repository setup and Container
+  compose variants.
 
-非目标：宣称官方豆包 API 支持，或添加 TTS/唤醒词等非 ASR 功能。
+Non-goals:
 
-Non-goals: claiming official Doubao API support, or adding non-ASR features such as TTS and wake-word detection.
+- claiming official Doubao API support,
+- adding TTS,
+- adding wake-word detection,
+- managing satellite speaker volume or local OPUS fallback prompts.
 
-## 合规 / Legal
+## Legal / 合规
 
-- 许可证 / License: MIT License. See `LICENSE`.
-- 致谢 / Credits: see `NOTICE.md`.
-- 非官方状态、用户责任、第三方语音服务提示和免责声明 / Unofficial status, user responsibilities, third-party voice service notice, and warranty disclaimer: see `DISCLAIMER.md`.
+- License: MIT License. See `LICENSE`.
+- Credits: see `NOTICE.md`.
+- Unofficial status, user responsibilities, third-party voice service notice,
+  and warranty disclaimer: see `DISCLAIMER.md`.
 
 ## License
 
