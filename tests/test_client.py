@@ -198,6 +198,17 @@ async def test_transcribe_pcm_reports_interim_and_final_results() -> None:
         (ResponseType.INTERIM_RESULT, "打开", 1),
         (ResponseType.FINAL_RESULT, "打开客厅灯", 2),
     ]
+    metrics = client.last_metrics
+    assert metrics["phase"] == "complete"
+    assert metrics["request_id"] == "request-1"
+    assert metrics["audio_bytes"] == 1280
+    assert metrics["frames"] == 2
+    assert metrics["response_events"] == 3
+    assert metrics["interim_results"] == 1
+    assert metrics["final_results"] == 1
+    assert metrics["final_packet_number"] == 2
+    assert metrics["transcript_chars"] == 5
+    assert isinstance(metrics["total_latency_ms"], int)
 
 
 async def test_transcribe_pcm_ignores_result_callback_errors() -> None:
@@ -281,6 +292,10 @@ async def test_transcribe_pcm_wraps_connect_errors_with_phase() -> None:
         assert "token-1" not in str(err)
     else:
         raise AssertionError("expected DoubaoAsrError")
+
+    assert client.last_metrics["phase"] == "connect"
+    assert client.last_metrics["request_id"] == "request-1"
+    assert client.last_metrics["audio_bytes"] == 640
 
 
 async def test_transcribe_pcm_refreshes_token_once_on_auth_start_task_error() -> None:

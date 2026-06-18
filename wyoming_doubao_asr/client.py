@@ -8,7 +8,7 @@ import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Iterable
-from typing import Protocol
+from typing import Any, Protocol
 from urllib.parse import urlencode
 
 import aiohttp
@@ -143,6 +143,12 @@ class DoubaoAsrClient:
         self._request_id_factory = request_id_factory or (lambda: str(uuid.uuid4()))
         self._time_ms_factory = time_ms_factory or (lambda: int(time.time() * 1000))
         self._response_timeout_s = response_timeout_s
+        self._last_metrics: dict[str, Any] = {}
+
+    @property
+    def last_metrics(self) -> dict[str, Any]:
+        """Return a copy of the latest request metrics for diagnostics."""
+        return dict(self._last_metrics)
 
     async def transcribe_pcm(
         self,
@@ -153,12 +159,20 @@ class DoubaoAsrClient:
     ) -> str:
         del language
         request_id = self._request_id_factory()
+        request_started = time.monotonic()
         _LOGGER.info("Doubao ASR request started request_id=%s", request_id)
         audio_chunks = list(pcm_chunks)
+        audio_bytes = sum(len(chunk) for chunk in audio_chunks)
 
         try:
             credentials = await self._get_credentials()
         except Exception as err:
+            self._record_error_metrics(
+                request_id,
+                "credentials",
+                request_started,
+                audio_bytes=audio_bytes,
+            )
             raise DoubaoAsrError(
                 "credentials",
                 str(err),
@@ -171,6 +185,8 @@ class DoubaoAsrClient:
                 credentials,
                 request_id,
                 on_result,
+                request_started,
+                audio_bytes,
             )
         except DoubaoAsrError as err:
             if not (
@@ -178,6 +194,12 @@ class DoubaoAsrClient:
                 and _is_auth_error(str(err))
                 and (self._refresh_credentials is not None)
             ):
+                self._record_error_metrics(
+                    request_id,
+                    err.phase,
+                    request_started,
+                    audio_bytes=audio_bytes,
+                )
                 raise
 
             _LOGGER.warning(
@@ -190,6 +212,8 @@ class DoubaoAsrClient:
                 refreshed_credentials,
                 request_id,
                 on_result,
+                request_started,
+                audio_bytes,
             )
 
     async def _transcribe_with_credentials(
@@ -198,6 +222,8 @@ class DoubaoAsrClient:
         credentials: DeviceCredentials,
         request_id: str,
         on_result: AsrResultCallback | None,
+        request_started: float,
+        audio_bytes: int,
     ) -> str:
         try:
             ws = await self._transport.connect(
@@ -285,11 +311,28 @@ class DoubaoAsrClient:
                     request_id=request_id,
                 ) from err
 
-            text = await self._read_transcript(ws, request_id, on_result)
+            text, result_metrics = await self._read_transcript(
+                ws, request_id, on_result, request_started
+            )
+            self._last_metrics = {
+                "request_id": request_id,
+                "phase": "complete",
+                "audio_bytes": audio_bytes,
+                "frames": frame_index,
+                "transcript_chars": len(text),
+                "total_latency_ms": _elapsed_ms(request_started),
+                **result_metrics,
+            }
             _LOGGER.info(
-                "Doubao ASR request completed request_id=%s transcript_chars=%s",
+                "Doubao ASR request completed request_id=%s frames=%s "
+                "transcript_chars=%s first_result_latency_ms=%s "
+                "final_result_latency_ms=%s total_latency_ms=%s",
                 request_id,
+                frame_index,
                 len(text),
+                self._last_metrics.get("first_result_latency_ms"),
+                self._last_metrics.get("final_result_latency_ms"),
+                self._last_metrics.get("total_latency_ms"),
             )
             return text
         finally:
@@ -352,8 +395,19 @@ class DoubaoAsrClient:
         ws: DoubaoWebSocket,
         request_id: str,
         on_result: AsrResultCallback | None = None,
-    ) -> str:
+        request_started: float | None = None,
+    ) -> tuple[str, dict[str, Any]]:
         final_text = ""
+        started = request_started or time.monotonic()
+        metrics: dict[str, Any] = {
+            "response_events": 0,
+            "vad_events": 0,
+            "interim_results": 0,
+            "final_results": 0,
+            "first_result_latency_ms": None,
+            "final_result_latency_ms": None,
+            "final_packet_number": None,
+        }
 
         while True:
             try:
@@ -369,6 +423,7 @@ class DoubaoAsrClient:
                 ) from err
 
             response = parse_response(data)
+            metrics["response_events"] += 1
 
             if response.response_type is ResponseType.ERROR:
                 raise DoubaoAsrError(
@@ -382,13 +437,23 @@ class DoubaoAsrClient:
                 ResponseType.INTERIM_RESULT,
                 ResponseType.FINAL_RESULT,
             }:
+                if metrics["first_result_latency_ms"] is None:
+                    metrics["first_result_latency_ms"] = _elapsed_ms(started)
+                if response.response_type is ResponseType.VAD_START:
+                    metrics["vad_events"] += 1
+                elif response.response_type is ResponseType.INTERIM_RESULT:
+                    metrics["interim_results"] += 1
+                elif response.response_type is ResponseType.FINAL_RESULT:
+                    metrics["final_results"] += 1
                 await self._notify_result(on_result, response, request_id)
 
             if response.response_type is ResponseType.FINAL_RESULT and response.text:
                 final_text = response.text
+                metrics["final_result_latency_ms"] = _elapsed_ms(started)
+                metrics["final_packet_number"] = response.packet_number
 
             if response.response_type is ResponseType.SESSION_FINISHED:
-                return final_text
+                return final_text, metrics
 
     async def _notify_result(
         self,
@@ -408,6 +473,21 @@ class DoubaoAsrClient:
                 request_id,
                 response.response_type.name,
             )
+
+    def _record_error_metrics(
+        self,
+        request_id: str,
+        phase: str,
+        started: float,
+        *,
+        audio_bytes: int,
+    ) -> None:
+        self._last_metrics = {
+            "request_id": request_id,
+            "phase": phase,
+            "audio_bytes": audio_bytes,
+            "total_latency_ms": _elapsed_ms(started),
+        }
 
     def _ws_url(self, credentials: DeviceCredentials) -> str:
         return f"{WEBSOCKET_URL}?{urlencode(_frontier_query(credentials))}"
@@ -461,3 +541,7 @@ def _is_auth_error(message: str) -> bool:
             "permission",
         )
     )
+
+
+def _elapsed_ms(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)
