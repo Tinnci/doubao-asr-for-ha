@@ -18,6 +18,7 @@ from .metrics import start_metrics_server
 
 
 async def main() -> None:
+    background_tasks: set[asyncio.Task[None]] = set()
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--uri", required=True, help="Wyoming URI, e.g. tcp://0.0.0.0:10300"
@@ -69,7 +70,12 @@ async def main() -> None:
     if args.metrics_uri:
         metrics_server = await start_metrics_server(args.metrics_uri, doubao_client)
         logging.getLogger(__name__).info("Metrics ready at %s", args.metrics_uri)
-        asyncio.create_task(metrics_server.serve_forever(), name="doubao_asr_metrics")
+        metrics_task = asyncio.create_task(
+            metrics_server.serve_forever(),
+            name="doubao_asr_metrics",
+        )
+        background_tasks.add(metrics_task)
+        metrics_task.add_done_callback(background_tasks.discard)
 
     if args.zeroconf:
         if not isinstance(server, AsyncTcpServer):

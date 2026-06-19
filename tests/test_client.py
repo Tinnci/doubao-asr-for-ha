@@ -206,9 +206,141 @@ async def test_transcribe_pcm_reports_interim_and_final_results() -> None:
     assert metrics["response_events"] == 3
     assert metrics["interim_results"] == 1
     assert metrics["final_results"] == 1
+    assert metrics["vad_start_seen"] is False
+    assert metrics["vad_finished_seen"] is True
+    assert metrics["vad_start_latency_ms"] is None
+    assert isinstance(metrics["vad_finished_latency_ms"], int)
+    assert isinstance(metrics["first_interim_latency_ms"], int)
+    assert isinstance(metrics["final_result_latency_ms"], int)
     assert metrics["final_packet_number"] == 2
     assert metrics["transcript_chars"] == 5
     assert isinstance(metrics["total_latency_ms"], int)
+
+
+async def test_transcribe_pcm_tracks_provider_vad_start_metrics() -> None:
+    websocket = FakeWebSocket()
+    websocket.responses = [
+        encode_response(message_type="TaskStarted"),
+        encode_response(message_type="SessionStarted"),
+        encode_response(
+            message_type="",
+            result_json=json.dumps(
+                {"extra": {"packet_number": 1, "vad_start": True}},
+                ensure_ascii=False,
+            ),
+        ),
+        encode_response(
+            message_type="",
+            result_json=json.dumps(
+                {
+                    "results": [
+                        {
+                            "text": "打开",
+                            "is_interim": True,
+                            "is_vad_finished": False,
+                        }
+                    ],
+                    "extra": {"packet_number": 2},
+                },
+                ensure_ascii=False,
+            ),
+        ),
+        encode_response(
+            message_type="",
+            result_json=json.dumps(
+                {
+                    "results": [
+                        {
+                            "text": "打开客厅灯",
+                            "is_interim": False,
+                            "is_vad_finished": True,
+                        }
+                    ],
+                    "extra": {"packet_number": 3},
+                },
+                ensure_ascii=False,
+            ),
+        ),
+        encode_response(message_type="SessionFinished"),
+    ]
+    client = DoubaoAsrClient(
+        credentials_provider=lambda: DeviceCredentials(
+            device_id="device-1",
+            install_id="install-1",
+            cdid="cdid-1",
+            openudid="open-1",
+            clientudid="client-1",
+            token="token-1",
+        ),
+        transport=FakeTransport(websocket),
+        encoder_factory=lambda: FakeEncoder(),
+        request_id_factory=lambda: "request-1",
+        time_ms_factory=lambda: 1000,
+    )
+
+    text = await client.transcribe_pcm([b"\x01\x00" * 640])
+
+    metrics = client.last_metrics
+    assert text == "打开客厅灯"
+    assert metrics["response_events"] == 4
+    assert metrics["vad_events"] == 1
+    assert metrics["vad_start_seen"] is True
+    assert metrics["vad_finished_seen"] is True
+    assert isinstance(metrics["vad_start_latency_ms"], int)
+    assert isinstance(metrics["vad_finished_latency_ms"], int)
+    assert isinstance(metrics["first_interim_latency_ms"], int)
+    assert isinstance(metrics["final_result_latency_ms"], int)
+    assert metrics["final_packet_number"] == 3
+
+
+async def test_transcribe_pcm_defaults_provider_vad_metrics_when_absent() -> None:
+    websocket = FakeWebSocket()
+    websocket.responses = [
+        encode_response(message_type="TaskStarted"),
+        encode_response(message_type="SessionStarted"),
+        encode_response(
+            message_type="",
+            result_json=json.dumps(
+                {
+                    "results": [
+                        {
+                            "text": "打开灯",
+                            "is_interim": False,
+                            "extra": {"nonstream_result": True},
+                        }
+                    ],
+                    "extra": {"packet_number": 1},
+                },
+                ensure_ascii=False,
+            ),
+        ),
+        encode_response(message_type="SessionFinished"),
+    ]
+    client = DoubaoAsrClient(
+        credentials_provider=lambda: DeviceCredentials(
+            device_id="device-1",
+            install_id="install-1",
+            cdid="cdid-1",
+            openudid="open-1",
+            clientudid="client-1",
+            token="token-1",
+        ),
+        transport=FakeTransport(websocket),
+        encoder_factory=lambda: FakeEncoder(),
+        request_id_factory=lambda: "request-1",
+        time_ms_factory=lambda: 1000,
+    )
+
+    text = await client.transcribe_pcm([b"\x01\x00" * 640])
+
+    metrics = client.last_metrics
+    assert text == "打开灯"
+    assert metrics["vad_start_seen"] is False
+    assert metrics["vad_finished_seen"] is False
+    assert metrics["vad_start_latency_ms"] is None
+    assert metrics["vad_finished_latency_ms"] is None
+    assert metrics["first_interim_latency_ms"] is None
+    assert isinstance(metrics["final_result_latency_ms"], int)
 
 
 async def test_transcribe_pcm_ignores_result_callback_errors() -> None:

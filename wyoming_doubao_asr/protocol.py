@@ -114,17 +114,17 @@ def parse_response(data: bytes) -> AsrResponse:
     extra = json_data.get("extra") or {}
     packet_number = int(extra.get("packet_number", -1))
 
-    if "results" not in json_data:
-        return AsrResponse(
-            response_type=ResponseType.HEARTBEAT,
-            packet_number=packet_number,
-            raw_json=json_data,
-        )
-
     if extra.get("vad_start") is True:
         return AsrResponse(
             response_type=ResponseType.VAD_START,
             vad_start=True,
+            packet_number=packet_number,
+            raw_json=json_data,
+        )
+
+    if "results" not in json_data:
+        return AsrResponse(
+            response_type=ResponseType.HEARTBEAT,
             packet_number=packet_number,
             raw_json=json_data,
         )

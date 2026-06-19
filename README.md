@@ -31,8 +31,8 @@ or Nabu Casa.
   final Wyoming `Transcript`.
 - Logs ASR phase and request id for troubleshooting.
 - Keeps per-request diagnostic metrics such as audio bytes, sent frame count,
-  upstream result-event counts, first-result latency, final-result latency,
-  transcript length, and failure phase.
+  upstream result-event counts, provider VAD start/finish flags, first interim
+  latency, final-result latency, transcript length, and failure phase.
 - Can expose the latest in-process metrics through an optional local HTTP
   endpoint with `--metrics-uri tcp://127.0.0.1:10301`.
 - Redacts tokens from raised errors.
@@ -50,7 +50,7 @@ or Nabu Casa.
 - 协议层会解析 VAD、中间结果和最终结果；客户端可通过可选回调观察这些事件，但 Home Assistant 仍只接收最终 Wyoming `Transcript`。
 - 错误日志包含 ASR 阶段和 request id，便于排障。
 - 保留每次请求的诊断指标，包括音频字节数、发送帧数、上游结果事件数、
-  首个结果延迟、最终结果延迟、转写长度和失败阶段。
+  provider VAD 开始/结束标记、首个中间结果延迟、最终结果延迟、转写长度和失败阶段。
 - 可通过 `--metrics-uri tcp://127.0.0.1:10301` 暴露本地 `/health` 和
   `/metrics`，供锁屏状态代理或 harness 抓取最近一次请求指标。
 - `StartTask` 认证/token 失败时自动刷新 token 并重试一次。
@@ -157,6 +157,7 @@ The current test suite covers:
 - Wyoming `Describe`,
 - PCM frame splitting,
 - Doubao protocol packet construction/parsing,
+- provider VAD/interim/final ASR metrics,
 - WebSocket ASR session sequence,
 - token refresh on auth failure,
 - token redaction in errors,

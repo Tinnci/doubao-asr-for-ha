@@ -404,7 +404,12 @@ class DoubaoAsrClient:
             "vad_events": 0,
             "interim_results": 0,
             "final_results": 0,
+            "vad_start_seen": False,
+            "vad_finished_seen": False,
+            "vad_start_latency_ms": None,
+            "vad_finished_latency_ms": None,
             "first_result_latency_ms": None,
+            "first_interim_latency_ms": None,
             "final_result_latency_ms": None,
             "final_packet_number": None,
         }
@@ -437,19 +442,30 @@ class DoubaoAsrClient:
                 ResponseType.INTERIM_RESULT,
                 ResponseType.FINAL_RESULT,
             }:
+                event_latency_ms = _elapsed_ms(started)
                 if metrics["first_result_latency_ms"] is None:
-                    metrics["first_result_latency_ms"] = _elapsed_ms(started)
+                    metrics["first_result_latency_ms"] = event_latency_ms
                 if response.response_type is ResponseType.VAD_START:
                     metrics["vad_events"] += 1
+                    metrics["vad_start_seen"] = True
+                    if metrics["vad_start_latency_ms"] is None:
+                        metrics["vad_start_latency_ms"] = event_latency_ms
                 elif response.response_type is ResponseType.INTERIM_RESULT:
                     metrics["interim_results"] += 1
+                    if metrics["first_interim_latency_ms"] is None:
+                        metrics["first_interim_latency_ms"] = event_latency_ms
                 elif response.response_type is ResponseType.FINAL_RESULT:
                     metrics["final_results"] += 1
+                    if response.vad_finished:
+                        metrics["vad_finished_seen"] = True
+                        if metrics["vad_finished_latency_ms"] is None:
+                            metrics["vad_finished_latency_ms"] = event_latency_ms
+                    if metrics["final_result_latency_ms"] is None:
+                        metrics["final_result_latency_ms"] = event_latency_ms
                 await self._notify_result(on_result, response, request_id)
 
             if response.response_type is ResponseType.FINAL_RESULT and response.text:
                 final_text = response.text
-                metrics["final_result_latency_ms"] = _elapsed_ms(started)
                 metrics["final_packet_number"] = response.packet_number
 
             if response.response_type is ResponseType.SESSION_FINISHED:

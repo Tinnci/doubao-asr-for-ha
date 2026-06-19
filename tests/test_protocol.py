@@ -89,6 +89,27 @@ def test_parse_response_returns_final_text_when_vad_finished() -> None:
     assert response.packet_number == 7
 
 
+def test_parse_response_returns_vad_start_without_results() -> None:
+    response_bytes = encode_response(
+        message_type="",
+        result_json=json.dumps(
+            {
+                "extra": {
+                    "packet_number": 3,
+                    "vad_start": True,
+                }
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    response = parse_response(response_bytes)
+
+    assert response.response_type is ResponseType.VAD_START
+    assert response.vad_start is True
+    assert response.packet_number == 3
+
+
 def test_parse_response_reports_task_failed_status_message() -> None:
     response_bytes = encode_response(
         message_type="TaskFailed",

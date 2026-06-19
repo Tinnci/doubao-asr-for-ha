@@ -14,7 +14,9 @@ class MetricsClient(Protocol):
         """Return the most recent ASR request metrics."""
 
 
-async def start_metrics_server(uri: str, client: MetricsClient) -> asyncio.AbstractServer:
+async def start_metrics_server(
+    uri: str, client: MetricsClient
+) -> asyncio.AbstractServer:
     """Start a tiny JSON HTTP server for health and metrics."""
     parsed = urlparse(uri)
     if parsed.scheme != "tcp" or not parsed.hostname or parsed.port is None:
@@ -35,7 +37,9 @@ async def handle_metrics_request(
     code = 200
     body: dict[str, Any] = {"ok": True}
     try:
-        request_line = (await asyncio.wait_for(reader.readline(), 2)).decode(errors="replace").strip()
+        request_line = (
+            await asyncio.wait_for(reader.readline(), 2)
+        ).decode(errors="replace").strip()
         method, path, _ = request_line.split(" ", 2)
         while line := await asyncio.wait_for(reader.readline(), 2):
             if line in {b"\r\n", b"\n"}:
