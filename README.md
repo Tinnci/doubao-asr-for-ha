@@ -29,6 +29,11 @@ or Nabu Casa.
 - Parses VAD, interim, and final ASR result events; callers can observe them
   through an optional client callback while Home Assistant still receives a
   final Wyoming `Transcript`.
+- Streams Wyoming audio chunks to Doubao concurrently when the handler is backed
+  by the async stream client path, so interim upstream events can update
+  diagnostics before capture ends.
+- Applies backpressure with a bounded 50-chunk streaming queue instead of
+  accumulating unbounded stale audio when the provider or network is slow.
 - Logs ASR phase and request id for troubleshooting.
 - Keeps per-request diagnostic metrics such as audio bytes, sent frame count,
   upstream result-event counts, provider VAD start/finish flags, first interim
@@ -48,6 +53,8 @@ or Nabu Casa.
 - 自动注册并缓存设备凭据到 `/data/doubao_credentials.json`。
 - 将 Wyoming PCM 音频转换为 16 kHz mono 20 ms Opus 帧后发送给豆包 ASR。
 - 协议层会解析 VAD、中间结果和最终结果；客户端可通过可选回调观察这些事件，但 Home Assistant 仍只接收最终 Wyoming `Transcript`。
+- 当 handler 使用 async stream client 路径时，会边接收 Wyoming 音频边推送到豆包，所以上游中间事件可以在录音结束前更新诊断指标。
+- 流式队列上限为 50 个 chunk；provider 或网络变慢时通过背压减速，而不是无限累积过期音频。
 - 错误日志包含 ASR 阶段和 request id，便于排障。
 - 保留每次请求的诊断指标，包括音频字节数、发送帧数、上游结果事件数、
   provider VAD 开始/结束标记、首个中间结果延迟、最终结果延迟、转写长度和失败阶段。
@@ -167,12 +174,12 @@ The current test suite covers:
 ## Operational notes / 运维说明
 
 - ASR quality depends on the upstream satellite capture chain. Wakeword
-  sensitivity, microphone gain, echo cancellation, and TTS playback gates are not
-  controlled by this project.
-- The current Wyoming handler buffers incoming audio until `AudioStop`. The
-  protocol/client can observe upstream interim results and now keeps request
-  metrics, but full end-to-end live partial transcripts require a handler
-  refactor that sends audio and reads ASR results concurrently.
+  sensitivity, microphone gain, echo cancellation, and capture/playback routing
+  are not controlled by this project.
+- The Wyoming handler now prefers the concurrent stream client path when
+  available. Home Assistant still receives only the final Wyoming `Transcript`;
+  live partial text should be treated as diagnostics/status, not user-visible
+  final ASR output.
 - Use `--metrics-uri tcp://127.0.0.1:10301` to expose `/health` and `/metrics`
   for local scraping by a display agent or harness.
 - The service expects PCM from Wyoming and sends Opus to Doubao. It does not
@@ -182,9 +189,8 @@ The current test suite covers:
 
 ## Roadmap / 后续方向
 
-- Add real-audio end-to-end ASR tests that cover the full HA voice pipeline.
-- Add a concurrent streaming handler path for live lock-screen
-  transcript/status updates while audio is still being captured.
+- Add real-audio end-to-end ASR tests that cover the full HA voice pipeline and
+  exercise the stream path under live capture timing.
 - Improve deployment docs for HA OS add-on repository setup and Container
   compose variants.
 

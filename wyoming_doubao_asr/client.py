@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import logging
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import AsyncIterable, Awaitable, Callable, Iterable
 from typing import Any, Protocol
 from urllib.parse import urlencode
 
 import aiohttp
 import opuslib
 
-from .audio import iter_pcm_frames
+from .audio import async_iter_pcm_frames, iter_pcm_frames
 from .constants import (
     ACCESS,
     AID,
@@ -104,6 +105,7 @@ RefreshCredentials = Callable[
     DeviceCredentials | Awaitable[DeviceCredentials],
 ]
 AsrResultCallback = Callable[[AsrResponse], object | Awaitable[object]]
+AsrMetricsCallback = Callable[[dict[str, Any]], object | Awaitable[object]]
 
 
 class DoubaoAsrError(RuntimeError):
@@ -216,6 +218,77 @@ class DoubaoAsrClient:
                 audio_bytes,
             )
 
+    async def transcribe_pcm_stream(
+        self,
+        pcm_chunks: AsyncIterable[bytes],
+        *,
+        language: str | None = None,
+        on_result: AsrResultCallback | None = None,
+    ) -> str:
+        del language
+        request_id = self._request_id_factory()
+        request_started = time.monotonic()
+        _LOGGER.info("Doubao ASR streaming request started request_id=%s", request_id)
+        self._last_metrics = {
+            "request_id": request_id,
+            "phase": "starting",
+            "audio_bytes": 0,
+            "frames": 0,
+            "audio_duration_ms": 0,
+            "total_latency_ms": 0,
+        }
+
+        try:
+            credentials = await self._get_credentials()
+        except Exception as err:
+            self._record_error_metrics(
+                request_id,
+                "credentials",
+                request_started,
+                audio_bytes=0,
+            )
+            raise DoubaoAsrError(
+                "credentials",
+                str(err),
+                request_id=request_id,
+            ) from err
+
+        try:
+            return await self._transcribe_stream_with_credentials(
+                pcm_chunks,
+                credentials,
+                request_id,
+                on_result,
+                request_started,
+            )
+        except DoubaoAsrError as err:
+            if not (
+                (err.phase == "start_task")
+                and _is_auth_error(str(err))
+                and (self._refresh_credentials is not None)
+            ):
+                self._record_error_metrics(
+                    request_id,
+                    err.phase,
+                    request_started,
+                    audio_bytes=int(self._last_metrics.get("audio_bytes") or 0),
+                )
+                raise
+
+            _LOGGER.warning(
+                "Doubao ASR streaming auth failed; refreshing credentials "
+                "request_id=%s",
+                request_id,
+            )
+            refreshed_credentials = await self._refresh_credentials_now()
+            return await self._transcribe_stream_with_credentials(
+                pcm_chunks,
+                refreshed_credentials,
+                request_id,
+                on_result,
+                request_started,
+            )
+
     async def _transcribe_with_credentials(
         self,
         pcm_chunks: list[bytes],
@@ -259,6 +332,7 @@ class DoubaoAsrClient:
             encoder = self._encoder_factory()
             start_time_ms = self._time_ms_factory()
             frame_index = 0
+            send_started = time.monotonic()
 
             try:
                 for pcm_frame in iter_pcm_frames(
@@ -290,6 +364,11 @@ class DoubaoAsrClient:
                             start_time_ms + frame_index * FRAME_DURATION_MS,
                         )
                     )
+                send_metrics = _audio_send_metrics(
+                    frame_index,
+                    send_started=send_started,
+                    request_started=request_started,
+                )
             except Exception as err:
                 raise DoubaoAsrError(
                     "send_audio",
@@ -321,8 +400,12 @@ class DoubaoAsrClient:
                 "frames": frame_index,
                 "transcript_chars": len(text),
                 "total_latency_ms": _elapsed_ms(request_started),
+                **send_metrics,
                 **result_metrics,
             }
+            self._last_metrics.update(
+                _post_audio_latency_metrics(self._last_metrics)
+            )
             _LOGGER.info(
                 "Doubao ASR request completed request_id=%s frames=%s "
                 "transcript_chars=%s first_result_latency_ms=%s "
@@ -342,6 +425,199 @@ class DoubaoAsrClient:
                 result = close_transport()
                 if inspect.isawaitable(result):
                     await result
+
+    async def _transcribe_stream_with_credentials(
+        self,
+        pcm_chunks: AsyncIterable[bytes],
+        credentials: DeviceCredentials,
+        request_id: str,
+        on_result: AsrResultCallback | None,
+        request_started: float,
+    ) -> str:
+        try:
+            ws = await self._transport.connect(
+                self._ws_url(credentials),
+                self._headers(),
+            )
+        except Exception as err:
+            raise DoubaoAsrError("connect", str(err), request_id=request_id) from err
+
+        progress: dict[str, Any] = {"audio_bytes": 0, "frames": 0}
+        send_metrics: dict[str, Any] = {}
+
+        def record_stream_metrics(result_metrics: dict[str, Any]) -> None:
+            streaming_send_metrics = _streaming_progress_metrics(progress)
+            self._last_metrics = {
+                "request_id": request_id,
+                "phase": "streaming",
+                "audio_bytes": progress["audio_bytes"],
+                "frames": progress["frames"],
+                "audio_duration_ms": _audio_duration_ms(progress["frames"]),
+                "total_latency_ms": _elapsed_ms(request_started),
+                **streaming_send_metrics,
+                **result_metrics,
+            }
+
+        reader_task: asyncio.Task[tuple[str, dict[str, Any]]] | None = None
+        try:
+            _LOGGER.debug("Doubao ASR streaming StartTask request_id=%s", request_id)
+            await ws.send_bytes(build_start_task(request_id, credentials.token))
+            await self._expect(
+                ws,
+                ResponseType.TASK_STARTED,
+                "start_task",
+                request_id,
+            )
+
+            _LOGGER.debug("Doubao ASR streaming StartSession request_id=%s", request_id)
+            await ws.send_bytes(
+                build_start_session(
+                    request_id, credentials.token, credentials.device_id
+                )
+            )
+            await self._expect(
+                ws,
+                ResponseType.SESSION_STARTED,
+                "start_session",
+                request_id,
+            )
+
+            reader_task = asyncio.create_task(
+                self._read_transcript(
+                    ws,
+                    request_id,
+                    on_result,
+                    request_started,
+                    on_metrics=record_stream_metrics,
+                ),
+                name=f"doubao_asr_read_{request_id}",
+            )
+            start_time_ms = self._time_ms_factory()
+            try:
+                send_started = time.monotonic()
+                await self._send_pcm_stream(
+                    ws,
+                    request_id,
+                    pcm_chunks,
+                    start_time_ms=start_time_ms,
+                    progress=progress,
+                    send_started=send_started,
+                    request_started=request_started,
+                )
+                send_metrics = _audio_send_metrics(
+                    progress["frames"],
+                    send_started=send_started,
+                    request_started=request_started,
+                    first_frame_started=progress.get("_first_frame_started"),
+                )
+            except Exception as err:
+                raise DoubaoAsrError(
+                    "send_audio",
+                    str(err),
+                    request_id=request_id,
+                ) from err
+
+            _LOGGER.debug(
+                "Doubao ASR streamed audio request_id=%s frames=%s",
+                request_id,
+                progress["frames"],
+            )
+            try:
+                await ws.send_bytes(build_finish_session(request_id, credentials.token))
+            except Exception as err:
+                raise DoubaoAsrError(
+                    "finish_session",
+                    str(err),
+                    request_id=request_id,
+                ) from err
+
+            text, result_metrics = await reader_task
+            self._last_metrics = {
+                "request_id": request_id,
+                "phase": "complete",
+                "audio_bytes": progress["audio_bytes"],
+                "frames": progress["frames"],
+                "transcript_chars": len(text),
+                "total_latency_ms": _elapsed_ms(request_started),
+                **send_metrics,
+                **result_metrics,
+            }
+            self._last_metrics.update(
+                _post_audio_latency_metrics(self._last_metrics)
+            )
+            _LOGGER.info(
+                "Doubao ASR streaming request completed request_id=%s frames=%s "
+                "transcript_chars=%s first_result_latency_ms=%s "
+                "final_result_latency_ms=%s total_latency_ms=%s",
+                request_id,
+                progress["frames"],
+                len(text),
+                self._last_metrics.get("first_result_latency_ms"),
+                self._last_metrics.get("final_result_latency_ms"),
+                self._last_metrics.get("total_latency_ms"),
+            )
+            return text
+        finally:
+            if reader_task is not None and not reader_task.done():
+                reader_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await reader_task
+            await ws.close()
+            close_transport = getattr(self._transport, "close", None)
+            if close_transport is not None:
+                result = close_transport()
+                if inspect.isawaitable(result):
+                    await result
+
+    async def _send_pcm_stream(
+        self,
+        ws: DoubaoWebSocket,
+        request_id: str,
+        pcm_chunks: AsyncIterable[bytes],
+        *,
+        start_time_ms: int,
+        progress: dict[str, Any],
+        send_started: float,
+        request_started: float,
+    ) -> None:
+        encoder = self._encoder_factory()
+        frame_index = 0
+        async for pcm_frame in async_iter_pcm_frames(
+            pcm_chunks,
+            sample_rate=SAMPLE_RATE,
+            channels=CHANNELS,
+            width=SAMPLE_WIDTH,
+        ):
+            if frame_index == 0:
+                first_frame_started = time.monotonic()
+                progress["_first_frame_started"] = first_frame_started
+                progress["first_audio_frame_latency_ms"] = _elapsed_ms(
+                    request_started
+                )
+                progress["audio_source_wait_ms"] = _elapsed_ms(send_started)
+            frame_state = FRAME_STATE_FIRST if frame_index == 0 else FRAME_STATE_MIDDLE
+            timestamp_ms = start_time_ms + frame_index * FRAME_DURATION_MS
+            await ws.send_bytes(
+                build_task_request(
+                    request_id,
+                    encoder.encode(pcm_frame),
+                    frame_state,
+                    timestamp_ms,
+                )
+            )
+            frame_index += 1
+            progress["frames"] = frame_index
+            progress["audio_bytes"] += len(pcm_frame)
+
+        if frame_index > 0:
+            await ws.send_bytes(
+                build_task_request(
+                    request_id,
+                    b"\x00" * 100,
+                    FRAME_STATE_LAST,
+                    start_time_ms + frame_index * FRAME_DURATION_MS,
+                )
+            )
 
     async def _refresh_credentials_now(self) -> DeviceCredentials:
         if self._refresh_credentials is None:
@@ -396,6 +672,7 @@ class DoubaoAsrClient:
         request_id: str,
         on_result: AsrResultCallback | None = None,
         request_started: float | None = None,
+        on_metrics: AsrMetricsCallback | None = None,
     ) -> tuple[str, dict[str, Any]]:
         final_text = ""
         started = request_started or time.monotonic()
@@ -462,6 +739,7 @@ class DoubaoAsrClient:
                             metrics["vad_finished_latency_ms"] = event_latency_ms
                     if metrics["final_result_latency_ms"] is None:
                         metrics["final_result_latency_ms"] = event_latency_ms
+                await self._notify_metrics(on_metrics, metrics, request_id)
                 await self._notify_result(on_result, response, request_id)
 
             if response.response_type is ResponseType.FINAL_RESULT and response.text:
@@ -490,6 +768,24 @@ class DoubaoAsrClient:
                 response.response_type.name,
             )
 
+    async def _notify_metrics(
+        self,
+        callback: AsrMetricsCallback | None,
+        metrics: dict[str, Any],
+        request_id: str,
+    ) -> None:
+        if callback is None:
+            return
+        try:
+            result = callback(dict(metrics))
+            if inspect.isawaitable(result):
+                await result
+        except Exception:
+            _LOGGER.exception(
+                "Doubao ASR metrics callback failed request_id=%s",
+                request_id,
+            )
+
     def _record_error_metrics(
         self,
         request_id: str,
@@ -502,6 +798,8 @@ class DoubaoAsrClient:
             "request_id": request_id,
             "phase": phase,
             "audio_bytes": audio_bytes,
+            "frames": 0,
+            "audio_duration_ms": 0,
             "total_latency_ms": _elapsed_ms(started),
         }
 
@@ -561,3 +859,69 @@ def _is_auth_error(message: str) -> bool:
 
 def _elapsed_ms(started: float) -> int:
     return int((time.monotonic() - started) * 1000)
+
+
+def _audio_duration_ms(frames: int) -> int:
+    return max(0, int(frames)) * FRAME_DURATION_MS
+
+
+def _audio_send_metrics(
+    frames: int,
+    *,
+    send_started: float,
+    request_started: float,
+    first_frame_started: float | None = None,
+) -> dict[str, Any]:
+    send_elapsed_ms = _elapsed_ms(send_started)
+    audio_duration_ms = _audio_duration_ms(frames)
+    if first_frame_started is None and frames > 0:
+        first_frame_started = send_started
+    actual_send_elapsed_ms = (
+        _elapsed_ms(first_frame_started) if first_frame_started is not None else 0
+    )
+    first_audio_latency_ms = (
+        int((first_frame_started - request_started) * 1000)
+        if first_frame_started is not None
+        else None
+    )
+    source_wait_ms = (
+        int((first_frame_started - send_started) * 1000)
+        if first_frame_started is not None
+        else None
+    )
+    return {
+        "audio_duration_ms": audio_duration_ms,
+        "audio_send_elapsed_ms": send_elapsed_ms,
+        "audio_send_actual_elapsed_ms": actual_send_elapsed_ms,
+        "audio_send_completed_latency_ms": _elapsed_ms(request_started),
+        "first_audio_frame_latency_ms": first_audio_latency_ms,
+        "audio_source_wait_ms": source_wait_ms,
+        "audio_send_realtime_ratio": (
+            round(audio_duration_ms / actual_send_elapsed_ms, 3)
+            if actual_send_elapsed_ms > 0
+            else None
+        ),
+    }
+
+
+def _streaming_progress_metrics(progress: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key in (
+        "first_audio_frame_latency_ms",
+        "audio_source_wait_ms",
+    ):
+        if key in progress:
+            result[key] = progress[key]
+    return result
+
+
+def _post_audio_latency_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
+    send_completed = metrics.get("audio_send_completed_latency_ms")
+    first_latency = metrics.get("first_result_latency_ms")
+    final_latency = metrics.get("final_result_latency_ms")
+    result: dict[str, Any] = {}
+    if isinstance(send_completed, int) and isinstance(first_latency, int):
+        result["post_audio_first_result_latency_ms"] = first_latency - send_completed
+    if isinstance(send_completed, int) and isinstance(final_latency, int):
+        result["post_audio_final_result_latency_ms"] = final_latency - send_completed
+    return result

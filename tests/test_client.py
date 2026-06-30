@@ -1,3 +1,4 @@
+import asyncio
 import json
 from urllib.parse import parse_qs, urlparse
 
@@ -78,6 +79,67 @@ class FailingTransport:
 class FakeEncoder:
     def encode(self, pcm_frame: bytes) -> bytes:
         return b"opus:" + pcm_frame[:1]
+
+
+class StreamingFakeWebSocket:
+    def __init__(self) -> None:
+        self.sent: list[bytes] = []
+        self.responses: asyncio.Queue[bytes] = asyncio.Queue()
+        self.responses.put_nowait(encode_response(message_type="TaskStarted"))
+        self.responses.put_nowait(encode_response(message_type="SessionStarted"))
+        self.closed = False
+
+    async def send_bytes(self, data: bytes) -> None:
+        self.sent.append(data)
+        request = decode_request(data)
+        if (
+            request["method_name"] == "TaskRequest"
+            and request["frame_state"] == FRAME_STATE_FIRST
+        ):
+            self.responses.put_nowait(
+                encode_response(
+                    message_type="",
+                    result_json=json.dumps(
+                        {
+                            "results": [
+                                {
+                                    "text": "打开",
+                                    "is_interim": True,
+                                    "is_vad_finished": False,
+                                }
+                            ],
+                            "extra": {"packet_number": 1},
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+            )
+        elif request["method_name"] == "FinishSession":
+            self.responses.put_nowait(
+                encode_response(
+                    message_type="",
+                    result_json=json.dumps(
+                        {
+                            "results": [
+                                {
+                                    "text": "打开客厅灯",
+                                    "is_interim": False,
+                                    "is_vad_finished": True,
+                                }
+                            ],
+                            "extra": {"packet_number": 2},
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+            )
+            self.responses.put_nowait(encode_response(message_type="SessionFinished"))
+
+    async def receive_bytes(self) -> bytes:
+        return await self.responses.get()
+
+    async def close(self) -> None:
+        self.closed = True
 
 
 async def test_transcribe_pcm_runs_doubao_session_sequence() -> None:
@@ -203,6 +265,13 @@ async def test_transcribe_pcm_reports_interim_and_final_results() -> None:
     assert metrics["request_id"] == "request-1"
     assert metrics["audio_bytes"] == 1280
     assert metrics["frames"] == 2
+    assert metrics["audio_duration_ms"] == 40
+    assert isinstance(metrics["audio_send_elapsed_ms"], int)
+    assert isinstance(metrics["audio_send_actual_elapsed_ms"], int)
+    assert isinstance(metrics["audio_send_completed_latency_ms"], int)
+    assert isinstance(metrics["first_audio_frame_latency_ms"], int)
+    assert isinstance(metrics["audio_source_wait_ms"], int)
+    assert "audio_send_realtime_ratio" in metrics
     assert metrics["response_events"] == 3
     assert metrics["interim_results"] == 1
     assert metrics["final_results"] == 1
@@ -215,6 +284,88 @@ async def test_transcribe_pcm_reports_interim_and_final_results() -> None:
     assert metrics["final_packet_number"] == 2
     assert metrics["transcript_chars"] == 5
     assert isinstance(metrics["total_latency_ms"], int)
+    assert isinstance(metrics["post_audio_final_result_latency_ms"], int)
+
+
+async def test_transcribe_pcm_stream_reports_interim_before_audio_ends() -> None:
+    websocket = StreamingFakeWebSocket()
+    client = DoubaoAsrClient(
+        credentials_provider=lambda: DeviceCredentials(
+            device_id="device-1",
+            install_id="install-1",
+            cdid="cdid-1",
+            openudid="open-1",
+            clientudid="client-1",
+            token="token-1",
+        ),
+        transport=FakeTransport(websocket),
+        encoder_factory=lambda: FakeEncoder(),
+        request_id_factory=lambda: "request-1",
+        time_ms_factory=lambda: 1000,
+    )
+    interim_seen = asyncio.Event()
+    source_resumed_after_interim = False
+    results = []
+    interim_metrics = {}
+
+    async def audio_source():
+        nonlocal source_resumed_after_interim
+        yield b"\x01\x00" * 320
+        await asyncio.wait_for(interim_seen.wait(), timeout=1)
+        source_resumed_after_interim = True
+        yield b"\x02\x00" * 320
+
+    async def on_result(response) -> None:
+        nonlocal interim_metrics
+        results.append((response.response_type, response.text, response.packet_number))
+        if response.response_type is ResponseType.INTERIM_RESULT:
+            interim_metrics = client.last_metrics
+            interim_seen.set()
+
+    text = await asyncio.wait_for(
+        client.transcribe_pcm_stream(
+            audio_source(),
+            language="zh",
+            on_result=on_result,
+        ),
+        timeout=2,
+    )
+
+    requests = [decode_request(data) for data in websocket.sent]
+    assert text == "打开客厅灯"
+    assert source_resumed_after_interim is True
+    assert results == [
+        (ResponseType.INTERIM_RESULT, "打开", 1),
+        (ResponseType.FINAL_RESULT, "打开客厅灯", 2),
+    ]
+    assert interim_metrics["phase"] == "streaming"
+    assert interim_metrics["audio_bytes"] == 640
+    assert interim_metrics["frames"] == 1
+    assert interim_metrics["audio_duration_ms"] == 20
+    assert isinstance(interim_metrics["first_audio_frame_latency_ms"], int)
+    assert isinstance(interim_metrics["audio_source_wait_ms"], int)
+    assert interim_metrics["interim_results"] == 1
+    assert interim_metrics["final_results"] == 0
+    assert [request["frame_state"] for request in requests[2:5]] == [
+        FRAME_STATE_FIRST,
+        FRAME_STATE_MIDDLE,
+        FRAME_STATE_LAST,
+    ]
+    assert requests[5]["method_name"] == "FinishSession"
+    assert websocket.closed is True
+    assert client.last_metrics["phase"] == "complete"
+    assert client.last_metrics["audio_bytes"] == 1280
+    assert client.last_metrics["frames"] == 2
+    assert client.last_metrics["audio_duration_ms"] == 40
+    assert isinstance(client.last_metrics["audio_send_elapsed_ms"], int)
+    assert isinstance(client.last_metrics["audio_send_actual_elapsed_ms"], int)
+    assert isinstance(client.last_metrics["audio_send_completed_latency_ms"], int)
+    assert isinstance(client.last_metrics["first_audio_frame_latency_ms"], int)
+    assert isinstance(client.last_metrics["audio_source_wait_ms"], int)
+    assert "audio_send_realtime_ratio" in client.last_metrics
+    assert isinstance(client.last_metrics["post_audio_final_result_latency_ms"], int)
+    assert client.last_metrics["interim_results"] == 1
+    assert client.last_metrics["final_results"] == 1
 
 
 async def test_transcribe_pcm_tracks_provider_vad_start_metrics() -> None:
