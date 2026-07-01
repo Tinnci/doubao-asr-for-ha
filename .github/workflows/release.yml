@@ -16,14 +16,22 @@ on:
         default: patch
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
+  packages: read
+
+concurrency:
+  group: release-${{ github.repository }}
 
 jobs:
   prepare-release:
     name: Prepare automatic release tag
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -31,6 +39,7 @@ jobs:
           fetch-depth: 0
 
       - name: Bump version, commit, and tag
+        id: version
         env:
           BUMP: ${{ inputs.bump }}
         shell: bash
@@ -100,29 +109,54 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add pyproject.toml config.yaml
-          git commit -m "Release $(grep '^tag=' "${GITHUB_OUTPUT}" | cut -d= -f2)"
           tag="$(grep '^tag=' "${GITHUB_OUTPUT}" | cut -d= -f2)"
+          git commit -m "Release ${tag}"
           git tag -a "${tag}" -m "${tag}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
           git push origin "${tag}"
 
   docker:
     name: Publish Docker image
-    if: github.event_name == 'push'
+    if: ${{ always() && (github.event_name == 'push' || needs.prepare-release.result == 'success') }}
+    needs: prepare-release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && needs.prepare-release.outputs.tag || github.ref }}
+
+      - name: Resolve release tag
+        id: release
+        env:
+          DISPATCH_TAG: ${{ needs.prepare-release.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            tag="${DISPATCH_TAG}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "version=${tag#v}" >> "${GITHUB_OUTPUT}"
 
       - name: Validate tag and version
         shell: bash
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME#v}"
+          tag="${{ steps.release.outputs.version }}"
           py_version="$(python3 -c 'import re; print(re.search(r"(?m)^version = \"([0-9]+\.[0-9]+\.[0-9]+)\"$", open("pyproject.toml", encoding="utf-8").read()).group(1))')"
           addon_version="$(python3 -c 'import re; print(re.search(r"(?m)^version: ([0-9]+\.[0-9]+\.[0-9]+)$", open("config.yaml", encoding="utf-8").read()).group(1))')"
-          if [[ "${tag}" != "${py_version}" || "${tag}" != "${addon_version}" ]]; then
+          if [[ "${py_version}" != "${addon_version}" ]]; then
+            echo "pyproject ${py_version} and config.yaml ${addon_version} are out of sync" >&2
+            exit 1
+          fi
+          if [[ "${tag}" != "${py_version}" ]]; then
             echo "Tag v${tag} does not match pyproject ${py_version} and config.yaml ${addon_version}" >&2
             exit 1
           fi
@@ -146,7 +180,7 @@ jobs:
         with:
           images: ghcr.io/tinnci/doubao-asr-for-ha
           tags: |
-            type=ref,event=tag
+            type=raw,value=${{ steps.release.outputs.tag }}
             type=raw,value=latest
 
       - name: Build and push Docker image
@@ -157,3 +191,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          generate_release_notes: true
