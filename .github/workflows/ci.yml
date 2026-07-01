@@ -10,13 +10,59 @@ permissions:
   contents: read
 
 jobs:
+  version-source-guard:
+    name: Reject manual version changes
+    runs-on: ubuntu-latest
+    if: github.ref_type != 'tag'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reject manual version changes
+        env:
+          ACTOR: ${{ github.actor }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+          BEFORE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            range="${BASE_SHA}...${HEAD_SHA}"
+          elif [[ "${BEFORE_SHA}" =~ ^0+$ ]]; then
+            range="${HEAD_SHA}^..${HEAD_SHA}"
+          else
+            range="${BEFORE_SHA}..${HEAD_SHA}"
+          fi
+
+          changed="$(git diff --name-only "${range}" -- pyproject.toml config.yaml || true)"
+          if [[ -z "${changed}" ]]; then
+            exit 0
+          fi
+
+          if [[ "${ACTOR}" == "github-actions[bot]" && "${HEAD_MESSAGE}" == Release\ v* ]]; then
+            exit 0
+          fi
+
+          {
+            echo "Version files must not be edited manually."
+            echo "Use the Release workflow_dispatch input so GitHub Actions bumps, commits, tags, and publishes the version."
+            echo "Changed version files:"
+            echo "${changed}"
+          } >&2
+          exit 1
+
   test:
     name: Python tests
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -43,7 +89,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Build image
         run: docker build -t doubao-asr-for-ha:test .
