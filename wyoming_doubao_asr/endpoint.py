@@ -18,6 +18,7 @@ def endpoint_summary(metrics: dict[str, Any]) -> dict[str, Any]:
         or final_results > 0
     )
     endpoint_detected = metrics.get("vad_finished_seen") is True or final_results > 0
+    error_kind = str(metrics.get("error_kind") or "")
 
     return {
         "state": _endpoint_state(
@@ -25,12 +26,22 @@ def endpoint_summary(metrics: dict[str, Any]) -> dict[str, Any]:
             speech_started=speech_started,
             endpoint_detected=endpoint_detected,
             interim_results=interim_results,
+            error_kind=error_kind,
         ),
         "speech_started": speech_started,
         "endpoint_detected": endpoint_detected,
         "interrupt_ready": phase in IN_PROGRESS_PHASES
         and speech_started
         and not endpoint_detected,
+        "terminal": _endpoint_terminal(phase=phase, error_kind=error_kind),
+        "reason": _endpoint_reason(
+            phase=phase,
+            speech_started=speech_started,
+            endpoint_detected=endpoint_detected,
+            interim_results=interim_results,
+            error_kind=error_kind,
+        ),
+        "failure_phase": str(metrics.get("failure_phase") or "") or None,
         "first_speech_latency_ms": _first_int(
             metrics.get("vad_start_latency_ms"),
             metrics.get("first_interim_latency_ms"),
@@ -49,9 +60,16 @@ def _endpoint_state(
     speech_started: bool,
     endpoint_detected: bool,
     interim_results: int,
+    error_kind: str,
 ) -> str:
     if not phase:
         return "idle"
+    if error_kind == "timeout":
+        return "timeout"
+    if error_kind == "provider_error":
+        return "provider_error"
+    if error_kind:
+        return "error"
     if phase == "complete":
         return "complete"
     if phase not in IN_PROGRESS_PHASES:
@@ -62,7 +80,40 @@ def _endpoint_state(
         return "partial"
     if speech_started:
         return "speech_started"
-    return "capturing"
+    return "silence"
+
+
+def _endpoint_terminal(*, phase: str, error_kind: str) -> bool:
+    return (
+        phase == "complete"
+        or bool(error_kind)
+        or bool(phase and phase not in IN_PROGRESS_PHASES)
+    )
+
+
+def _endpoint_reason(
+    *,
+    phase: str,
+    speech_started: bool,
+    endpoint_detected: bool,
+    interim_results: int,
+    error_kind: str,
+) -> str:
+    if not phase:
+        return "no_active_request"
+    if error_kind:
+        return error_kind
+    if phase == "complete":
+        return "complete"
+    if phase not in IN_PROGRESS_PHASES:
+        return "unknown_phase"
+    if endpoint_detected:
+        return "endpoint_detected"
+    if interim_results > 0:
+        return "provider_partial"
+    if speech_started:
+        return "speech_detected"
+    return "silence"
 
 
 def _first_int(*values: object) -> int | None:

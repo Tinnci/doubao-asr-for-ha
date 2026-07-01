@@ -38,6 +38,10 @@ or Nabu Casa.
 - Keeps per-request diagnostic metrics such as audio bytes, sent frame count,
   upstream result-event counts, provider VAD start/finish flags, first interim
   latency, final-result latency, transcript length, and failure phase.
+- Exposes a compact `endpoint` summary for callers that should not parse raw
+  counters. The state distinguishes `silence`, `speech_started`, `partial`,
+  `endpoint_detected`, `complete`, `timeout`, `provider_error`, and generic
+  `error` conditions.
 - Can expose the latest in-process metrics through an optional local HTTP
   endpoint with `--metrics-uri tcp://127.0.0.1:10301`; `/metrics` also exposes
   the static audio contract and stream concurrency model so satellite

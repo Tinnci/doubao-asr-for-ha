@@ -175,6 +175,7 @@ class DoubaoAsrClient:
                 "credentials",
                 request_started,
                 audio_bytes=audio_bytes,
+                error=err,
             )
             raise DoubaoAsrError(
                 "credentials",
@@ -202,6 +203,7 @@ class DoubaoAsrClient:
                     err.phase,
                     request_started,
                     audio_bytes=audio_bytes,
+                    error=err,
                 )
                 raise
 
@@ -248,6 +250,7 @@ class DoubaoAsrClient:
                 "credentials",
                 request_started,
                 audio_bytes=0,
+                error=err,
             )
             raise DoubaoAsrError(
                 "credentials",
@@ -274,6 +277,7 @@ class DoubaoAsrClient:
                     err.phase,
                     request_started,
                     audio_bytes=int(self._last_metrics.get("audio_bytes") or 0),
+                    error=err,
                 )
                 raise
 
@@ -792,10 +796,14 @@ class DoubaoAsrClient:
         started: float,
         *,
         audio_bytes: int,
+        error: BaseException | None = None,
     ) -> None:
         self._last_metrics = {
             "request_id": request_id,
             "phase": phase,
+            "status": "error",
+            "failure_phase": phase,
+            "error_kind": _error_kind(phase, error),
             "audio_bytes": audio_bytes,
             "frames": 0,
             "audio_duration_ms": 0,
@@ -840,6 +848,23 @@ def _frontier_query(credentials: DeviceCredentials) -> dict[str, str]:
         "target": "",
         "mobile": "",
     }
+
+
+def _error_kind(phase: str, error: BaseException | None) -> str:
+    message = str(error or "").lower()
+    if "timed out after" in message or "timeout" in message:
+        return "timeout"
+    if "upstream returned an error" in message:
+        return "provider_error"
+    if phase == "credentials":
+        return "credentials_error"
+    if phase == "connect":
+        return "transport_error"
+    if phase in {"start_task", "start_session", "finish_session", "read_transcript"}:
+        return "provider_error"
+    if phase == "send_audio":
+        return "stream_error"
+    return "protocol_error"
 
 
 def _is_auth_error(message: str) -> bool:

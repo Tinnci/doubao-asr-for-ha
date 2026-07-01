@@ -596,6 +596,11 @@ async def test_transcribe_pcm_wraps_connect_errors_with_phase() -> None:
         raise AssertionError("expected DoubaoAsrError")
 
     assert client.last_metrics["phase"] == "connect"
+    assert client.last_metrics["status"] == "error"
+    assert client.last_metrics["failure_phase"] == "connect"
+    assert client.last_metrics["error_kind"] == "transport_error"
+    assert client.last_metrics["endpoint"]["state"] == "error"
+    assert client.last_metrics["endpoint"]["terminal"] is True
     assert client.last_metrics["request_id"] == "request-1"
     assert client.last_metrics["audio_bytes"] == 640
 
