@@ -37,6 +37,7 @@ from .constants import (
     WEBSOCKET_URL,
 )
 from .device import DeviceCredentials
+from .endpoint import endpoint_summary
 from .protocol import (
     FRAME_STATE_FIRST,
     FRAME_STATE_LAST,
@@ -237,6 +238,7 @@ class DoubaoAsrClient:
             "audio_duration_ms": 0,
             "total_latency_ms": 0,
         }
+        self._last_metrics["endpoint"] = endpoint_summary(self._last_metrics)
 
         try:
             credentials = await self._get_credentials()
@@ -404,6 +406,7 @@ class DoubaoAsrClient:
                 **result_metrics,
             }
             self._last_metrics.update(_post_audio_latency_metrics(self._last_metrics))
+            _attach_endpoint_summary(self._last_metrics)
             _LOGGER.info(
                 "Doubao ASR request completed request_id=%s frames=%s "
                 "transcript_chars=%s first_result_latency_ms=%s "
@@ -455,6 +458,7 @@ class DoubaoAsrClient:
                 **streaming_send_metrics,
                 **result_metrics,
             }
+            _attach_endpoint_summary(self._last_metrics)
 
         reader_task: asyncio.Task[tuple[str, dict[str, Any]]] | None = None
         try:
@@ -541,6 +545,7 @@ class DoubaoAsrClient:
                 **result_metrics,
             }
             self._last_metrics.update(_post_audio_latency_metrics(self._last_metrics))
+            _attach_endpoint_summary(self._last_metrics)
             _LOGGER.info(
                 "Doubao ASR streaming request completed request_id=%s frames=%s "
                 "transcript_chars=%s first_result_latency_ms=%s "
@@ -796,6 +801,7 @@ class DoubaoAsrClient:
             "audio_duration_ms": 0,
             "total_latency_ms": _elapsed_ms(started),
         }
+        _attach_endpoint_summary(self._last_metrics)
 
     def _ws_url(self, credentials: DeviceCredentials) -> str:
         return f"{WEBSOCKET_URL}?{urlencode(_frontier_query(credentials))}"
@@ -919,3 +925,7 @@ def _post_audio_latency_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
     if isinstance(send_completed, int) and isinstance(final_latency, int):
         result["post_audio_final_result_latency_ms"] = final_latency - send_completed
     return result
+
+
+def _attach_endpoint_summary(metrics: dict[str, Any]) -> None:
+    metrics["endpoint"] = endpoint_summary(metrics)

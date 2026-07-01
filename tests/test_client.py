@@ -142,6 +142,18 @@ class StreamingFakeWebSocket:
         self.closed = True
 
 
+def _assert_streaming_endpoint(
+    metrics: dict,
+    *,
+    state: str,
+    interrupt_ready: bool,
+) -> None:
+    endpoint = metrics["endpoint"]
+    assert endpoint["state"] == state
+    assert endpoint["speech_started"] is True
+    assert endpoint["interrupt_ready"] is interrupt_ready
+
+
 async def test_transcribe_pcm_runs_doubao_session_sequence() -> None:
     websocket = FakeWebSocket()
     transport = FakeTransport(websocket)
@@ -346,6 +358,7 @@ async def test_transcribe_pcm_stream_reports_interim_before_audio_ends() -> None
     assert isinstance(interim_metrics["audio_source_wait_ms"], int)
     assert interim_metrics["interim_results"] == 1
     assert interim_metrics["final_results"] == 0
+    _assert_streaming_endpoint(interim_metrics, state="partial", interrupt_ready=True)
     assert [request["frame_state"] for request in requests[2:5]] == [
         FRAME_STATE_FIRST,
         FRAME_STATE_MIDDLE,
@@ -366,6 +379,12 @@ async def test_transcribe_pcm_stream_reports_interim_before_audio_ends() -> None
     assert isinstance(client.last_metrics["post_audio_final_result_latency_ms"], int)
     assert client.last_metrics["interim_results"] == 1
     assert client.last_metrics["final_results"] == 1
+    _assert_streaming_endpoint(
+        client.last_metrics,
+        state="complete",
+        interrupt_ready=False,
+    )
+    assert client.last_metrics["endpoint"]["endpoint_detected"] is True
 
 
 async def test_transcribe_pcm_tracks_provider_vad_start_metrics() -> None:
