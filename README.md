@@ -39,7 +39,9 @@ or Nabu Casa.
   upstream result-event counts, provider VAD start/finish flags, first interim
   latency, final-result latency, transcript length, and failure phase.
 - Can expose the latest in-process metrics through an optional local HTTP
-  endpoint with `--metrics-uri tcp://127.0.0.1:10301`.
+  endpoint with `--metrics-uri tcp://127.0.0.1:10301`; `/metrics` also exposes
+  the static audio contract and stream concurrency model so satellite
+  diagnostics do not need to infer them from source code.
 - Redacts tokens from raised errors.
 - Refreshes the token and retries once when `StartTask` fails with an
   authentication/token error.
@@ -59,7 +61,8 @@ or Nabu Casa.
 - 保留每次请求的诊断指标，包括音频字节数、发送帧数、上游结果事件数、
   provider VAD 开始/结束标记、首个中间结果延迟、最终结果延迟、转写长度和失败阶段。
 - 可通过 `--metrics-uri tcp://127.0.0.1:10301` 暴露本地 `/health` 和
-  `/metrics`，供锁屏状态代理或 harness 抓取最近一次请求指标。
+  `/metrics`，供锁屏状态代理或 harness 抓取最近一次请求指标；`/metrics`
+  同时暴露静态音频合约和流并发模型，避免卫星诊断从源码里推断。
 - `StartTask` 认证/token 失败时自动刷新 token 并重试一次。
 
 ## Runtime options / 运行选项
@@ -182,6 +185,11 @@ The current test suite covers:
   final ASR output.
 - Use `--metrics-uri tcp://127.0.0.1:10301` to expose `/health` and `/metrics`
   for local scraping by a display agent or harness.
+- `/metrics` reports the expected Wyoming input as 16 kHz mono S16_LE and the
+  Doubao upstream payload as 16 kHz mono `speech_opus` frames. Multiple rooms
+  should be modeled above this service as separate Wyoming connections or
+  separate service instances; this adapter does not own room-level capture
+  orchestration.
 - The service expects PCM from Wyoming and sends Opus to Doubao. It does not
   synthesize TTS and does not implement wake word detection.
 - For Home Assistant Container deployments, keep zeroconf disabled unless the

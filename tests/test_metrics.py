@@ -35,6 +35,15 @@ async def test_metrics_server_returns_last_metrics() -> None:
         data = await _http_get(host, port, "/metrics")
 
         assert data["ok"] is True
+        assert data["audio_contract"]["wyoming_input"] == {
+            "sample_rate_hz": 16000,
+            "channels": 1,
+            "sample_width_bytes": 2,
+            "format": "S16_LE",
+        }
+        assert data["audio_contract"]["upstream_payload"]["codec"] == "speech_opus"
+        assert data["streaming"]["handler_scope"] == "one_stream_per_wyoming_connection"
+        assert data["streaming"]["parallel_room_manager"] is False
         assert data["last_metrics"]["total_latency_ms"] == 123
     finally:
         server.close()

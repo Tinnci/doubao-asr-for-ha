@@ -7,6 +7,8 @@ import json
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
+from .constants import CHANNELS, FRAME_DURATION_MS, SAMPLE_RATE, SAMPLE_WIDTH
+
 
 class MetricsClient(Protocol):
     @property
@@ -52,7 +54,12 @@ async def handle_metrics_request(
         elif path == "/health":
             body = {"ok": True, "service": "doubao-asr"}
         elif path == "/metrics":
-            body = {"ok": True, "last_metrics": client.last_metrics}
+            body = {
+                "ok": True,
+                "audio_contract": audio_contract(),
+                "streaming": streaming_capabilities(),
+                "last_metrics": client.last_metrics,
+            }
         else:
             code, body = 404, {"ok": False, "error": "not found"}
     except (ValueError, TimeoutError):
@@ -72,3 +79,32 @@ async def handle_metrics_request(
     await writer.drain()
     writer.close()
     await writer.wait_closed()
+
+
+def audio_contract() -> dict[str, Any]:
+    """Return the ASR audio format contract exposed for diagnostics."""
+    return {
+        "wyoming_input": {
+            "sample_rate_hz": SAMPLE_RATE,
+            "channels": CHANNELS,
+            "sample_width_bytes": SAMPLE_WIDTH,
+            "format": "S16_LE",
+        },
+        "upstream_payload": {
+            "sample_rate_hz": SAMPLE_RATE,
+            "channels": CHANNELS,
+            "codec": "speech_opus",
+            "frame_duration_ms": FRAME_DURATION_MS,
+        },
+        "conversion_owner": "wyoming_doubao_asr.handler.AudioChunkConverter",
+    }
+
+
+def streaming_capabilities() -> dict[str, Any]:
+    """Return the ASR stream concurrency model for diagnostics."""
+    return {
+        "handler_scope": "one_stream_per_wyoming_connection",
+        "continuous_capture_owner": "wyoming-satellite",
+        "parallel_room_manager": False,
+        "partial_results_are_diagnostics": True,
+    }
