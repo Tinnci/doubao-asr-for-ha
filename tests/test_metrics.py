@@ -15,9 +15,7 @@ class FakeClient:
 async def _http_get(host: str, port: int, path: str) -> dict[str, object]:
     reader, writer = await asyncio.open_connection(host, port)
     request = (
-        f"GET {path} HTTP/1.1\r\n"
-        "Host: fixture\r\n"
-        "Connection: close\r\n\r\n"
+        f"GET {path} HTTP/1.1\r\nHost: fixture\r\nConnection: close\r\n\r\n"
     ).encode()
     writer.write(request)
     await writer.drain()

@@ -403,9 +403,7 @@ class DoubaoAsrClient:
                 **send_metrics,
                 **result_metrics,
             }
-            self._last_metrics.update(
-                _post_audio_latency_metrics(self._last_metrics)
-            )
+            self._last_metrics.update(_post_audio_latency_metrics(self._last_metrics))
             _LOGGER.info(
                 "Doubao ASR request completed request_id=%s frames=%s "
                 "transcript_chars=%s first_result_latency_ms=%s "
@@ -542,9 +540,7 @@ class DoubaoAsrClient:
                 **send_metrics,
                 **result_metrics,
             }
-            self._last_metrics.update(
-                _post_audio_latency_metrics(self._last_metrics)
-            )
+            self._last_metrics.update(_post_audio_latency_metrics(self._last_metrics))
             _LOGGER.info(
                 "Doubao ASR streaming request completed request_id=%s frames=%s "
                 "transcript_chars=%s first_result_latency_ms=%s "
@@ -591,9 +587,7 @@ class DoubaoAsrClient:
             if frame_index == 0:
                 first_frame_started = time.monotonic()
                 progress["_first_frame_started"] = first_frame_started
-                progress["first_audio_frame_latency_ms"] = _elapsed_ms(
-                    request_started
-                )
+                progress["first_audio_frame_latency_ms"] = _elapsed_ms(request_started)
                 progress["audio_source_wait_ms"] = _elapsed_ms(send_started)
             frame_state = FRAME_STATE_FIRST if frame_index == 0 else FRAME_STATE_MIDDLE
             timestamp_ms = start_time_ms + frame_index * FRAME_DURATION_MS

@@ -38,8 +38,10 @@ async def handle_metrics_request(
     body: dict[str, Any] = {"ok": True}
     try:
         request_line = (
-            await asyncio.wait_for(reader.readline(), 2)
-        ).decode(errors="replace").strip()
+            (await asyncio.wait_for(reader.readline(), 2))
+            .decode(errors="replace")
+            .strip()
+        )
         method, path, _ = request_line.split(" ", 2)
         while line := await asyncio.wait_for(reader.readline(), 2):
             if line in {b"\r\n", b"\n"}:
