@@ -39,9 +39,10 @@ or Nabu Casa.
   upstream result-event counts, provider VAD start/finish flags, first interim
   latency, final-result latency, transcript length, and failure phase.
 - Exposes a compact `endpoint` summary for callers that should not parse raw
-  counters. The state distinguishes `silence`, `speech_started`, `partial`,
+  counters. The state distinguishes `silence`, `speech_start`, `partial`,
   `endpoint_detected`, `complete`, `timeout`, `provider_error`, and generic
-  `error` conditions.
+  `error` conditions; the separate `speech_started` boolean remains available
+  for callers that need a stable predicate.
 - Can expose the latest in-process metrics through an optional local HTTP
   endpoint with `--metrics-uri tcp://127.0.0.1:10301`; `/metrics` also exposes
   the static audio contract and stream concurrency model so satellite
@@ -192,7 +193,8 @@ The current test suite covers:
 - `/metrics` reports the expected Wyoming input as 16 kHz mono S16_LE and the
   Doubao upstream payload as 16 kHz mono `speech_opus` frames. Multiple rooms
   should be modeled above this service as separate Wyoming connections or
-  separate service instances; this adapter does not own room-level capture
+  separate service instances; this adapter exposes
+  `future_multi_room_orchestrator` metadata but does not own room-level capture
   orchestration.
 - The service expects PCM from Wyoming and sends Opus to Doubao. It does not
   synthesize TTS and does not implement wake word detection.

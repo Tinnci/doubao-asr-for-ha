@@ -44,6 +44,16 @@ async def test_metrics_server_returns_last_metrics() -> None:
         assert data["audio_contract"]["upstream_payload"]["codec"] == "speech_opus"
         assert data["streaming"]["handler_scope"] == "one_stream_per_wyoming_connection"
         assert data["streaming"]["parallel_room_manager"] is False
+        assert (
+            data["streaming"]["session_model"] == "one_asr_stream_per_satellite_session"
+        )
+        assert (
+            data["streaming"]["future_multi_room_orchestrator"]["implemented"] is False
+        )
+        assert (
+            data["streaming"]["future_multi_room_orchestrator"]["seam"]
+            == "orchestrator_above_independent_wyoming_streams"
+        )
         assert data["last_metrics"]["total_latency_ms"] == 123
     finally:
         server.close()

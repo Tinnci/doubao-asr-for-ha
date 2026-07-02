@@ -79,7 +79,7 @@ def _endpoint_state(
     if interim_results > 0:
         return "partial"
     if speech_started:
-        return "speech_started"
+        return "speech_start"
     return "silence"
 
 

@@ -45,6 +45,27 @@ def test_endpoint_summary_marks_in_progress_silence() -> None:
     assert summary["reason"] == "silence"
 
 
+def test_endpoint_summary_marks_provider_vad_speech_start() -> None:
+    summary = endpoint_summary(
+        {
+            "phase": "streaming",
+            "interim_results": 0,
+            "final_results": 0,
+            "vad_start_seen": True,
+            "vad_finished_seen": False,
+            "vad_start_latency_ms": 95,
+        }
+    )
+
+    assert summary["state"] == "speech_start"
+    assert summary["speech_started"] is True
+    assert summary["endpoint_detected"] is False
+    assert summary["interrupt_ready"] is True
+    assert summary["terminal"] is False
+    assert summary["reason"] == "speech_detected"
+    assert summary["first_speech_latency_ms"] == 95
+
+
 def test_endpoint_summary_marks_final_endpoint_not_interrupt_ready() -> None:
     summary = endpoint_summary(
         {

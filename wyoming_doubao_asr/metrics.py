@@ -106,5 +106,15 @@ def streaming_capabilities() -> dict[str, Any]:
         "handler_scope": "one_stream_per_wyoming_connection",
         "continuous_capture_owner": "wyoming-satellite",
         "parallel_room_manager": False,
+        "session_model": "one_asr_stream_per_satellite_session",
+        "future_multi_room_orchestrator": {
+            "implemented": False,
+            "seam": "orchestrator_above_independent_wyoming_streams",
+            "per_room_requirements": [
+                "independent_wyoming_satellite_session",
+                "independent_capture_playback_route",
+                "independent_asr_stream",
+            ],
+        },
         "partial_results_are_diagnostics": True,
     }
