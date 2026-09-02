@@ -135,6 +135,20 @@ async def test_audio_stop_transcribes_collected_audio() -> None:
     assert fake_client.calls == [([b"\x01\x00"], "zh")]
 
 
+async def test_audio_stop_does_not_log_transcript_text(caplog) -> None:
+    handler, _written = make_handler(FakeClient())
+    caplog.set_level(logging.INFO)
+
+    await handler.handle_event(Transcribe(language="zh").event())
+    await handler.handle_event(
+        AudioChunk(rate=16000, width=2, channels=1, audio=b"\x01\x00").event()
+    )
+    await handler.handle_event(AudioStop().event())
+
+    assert "打开客厅灯" not in caplog.text
+    assert "transcript_chars=5" in caplog.text
+
+
 async def test_streaming_client_starts_before_audio_stop() -> None:
     fake_client = StreamingFakeClient()
     handler, written = make_handler(fake_client)

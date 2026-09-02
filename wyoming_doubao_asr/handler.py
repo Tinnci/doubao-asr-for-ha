@@ -97,7 +97,7 @@ class DoubaoEventHandler(AsyncEventHandler):
                 )
                 raise
             try:
-                _LOGGER.info("Transcript: %s", text)
+                _LOGGER.info("Transcription completed transcript_chars=%d", len(text))
                 await self.write_event(
                     Transcript(text=text, language=self._language).event()
                 )
