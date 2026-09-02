@@ -1,87 +1,91 @@
 # Doubao ASR for Home Assistant
 
-[English + 简体中文](README.md)
-
-[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue.svg)](LICENSE)
 [![CI](https://github.com/Tinnci/doubao-asr-for-ha/actions/workflows/ci.yml/badge.svg)](https://github.com/Tinnci/doubao-asr-for-ha/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
-[![Home Assistant Add-on](https://img.shields.io/badge/Home%20Assistant-Add--on-41BDF5.svg)](config.yaml)
 [![Wyoming Protocol](https://img.shields.io/badge/protocol-Wyoming-orange.svg)](https://www.home-assistant.io/integrations/wyoming/)
 
-非官方 Home Assistant Wyoming 语音识别服务，基于豆包 ASR。
+Use Doubao speech recognition through the Home Assistant Wyoming Protocol.
 
-Unofficial Home Assistant Wyoming speech-to-text service backed by Doubao ASR.
+The service runs as a Home Assistant add-on or a standalone container. It
+accepts Wyoming PCM audio and returns one final Wyoming `Transcript`.
 
-本项目要求使用者自行遵守相关服务条款、法律法规、隐私和数据保护要求。本项目不隶属于豆包、字节跳动、Home Assistant 或 Nabu Casa，也未获得其认可、赞助或维护。
+> [!IMPORTANT]
+> This project is unofficial. It is not affiliated with Doubao, ByteDance,
+> Home Assistant, or Nabu Casa.
 
-Users are responsible for complying with applicable service terms, laws, privacy
-rules, and data protection requirements. This project is not affiliated with,
-endorsed by, sponsored by, or maintained by Doubao, ByteDance, Home Assistant,
-or Nabu Casa.
+## Supported use
 
-## Current capabilities / 当前能力
+The Wyoming `Describe` response advertises Chinese (`zh`) recognition. English
+documentation does not mean that the upstream service supports English ASR.
 
-- Exposes a Wyoming ASR server on `10300/tcp`.
-- Works as a Home Assistant add-on or as a standalone Docker container.
-- Registers and persists device credentials in `/data/doubao_credentials.json`.
-- Uses a WebSocket-based Doubao ASR session.
-- Converts incoming Wyoming PCM into 16 kHz mono 20 ms Opus frames.
-- Parses VAD, interim, and final ASR result events; callers can observe them
-  through an optional client callback while Home Assistant still receives a
-  final Wyoming `Transcript`.
-- Streams Wyoming audio chunks to Doubao concurrently when the handler is backed
-  by the async stream client path, so interim upstream events can update
-  diagnostics before capture ends.
-- Applies backpressure with a bounded 50-chunk streaming queue instead of
-  accumulating unbounded stale audio when the provider or network is slow.
-- Logs ASR phase and request id for troubleshooting.
-- Keeps per-request diagnostic metrics such as audio bytes, sent frame count,
-  upstream result-event counts, provider VAD start/finish flags, first interim
-  latency, final-result latency, transcript length, and failure phase.
-- Exposes a compact `endpoint` summary for callers that should not parse raw
-  counters. The state distinguishes `silence`, `speech_start`, `partial`,
-  `endpoint_detected`, `complete`, `timeout`, `provider_error`, and generic
-  `error` conditions; the separate `speech_started` boolean remains available
-  for callers that need a stable predicate.
-- Can expose the latest in-process metrics through an optional local HTTP
-  endpoint with `--metrics-uri tcp://127.0.0.1:10301`; `/metrics` also exposes
-  the static audio contract and stream concurrency model so satellite
-  diagnostics do not need to infer them from source code.
-- Redacts tokens from raised errors.
-- Refreshes the token and retries once when `StartTask` fails with an
-  authentication/token error.
-- Disables zeroconf by default in standalone Docker mode so the TCP server starts
-  reliably.
+| Boundary | Format |
+| --- | --- |
+| Wyoming input | 16 kHz, mono, signed 16-bit PCM |
+| Doubao upload | 16 kHz, mono, 20 ms `speech_opus` frames |
+| Home Assistant result | Final Wyoming `Transcript` |
 
-中文概述：
+The service does not provide TTS, wake-word detection, or satellite audio
+routing.
 
-- 在 `10300/tcp` 提供 Wyoming ASR 服务。
-- 支持 Home Assistant add-on 和独立 Docker 容器两种运行方式。
-- 自动注册并缓存设备凭据到 `/data/doubao_credentials.json`。
-- 将 Wyoming PCM 音频转换为 16 kHz mono 20 ms Opus 帧后发送给豆包 ASR。
-- 协议层会解析 VAD、中间结果和最终结果；客户端可通过可选回调观察这些事件，但 Home Assistant 仍只接收最终 Wyoming `Transcript`。
-- 当 handler 使用 async stream client 路径时，会边接收 Wyoming 音频边推送到豆包，所以上游中间事件可以在录音结束前更新诊断指标。
-- 流式队列上限为 50 个 chunk；provider 或网络变慢时通过背压减速，而不是无限累积过期音频。
-- 错误日志包含 ASR 阶段和 request id，便于排障。
-- 保留每次请求的诊断指标，包括音频字节数、发送帧数、上游结果事件数、
-  provider VAD 开始/结束标记、首个中间结果延迟、最终结果延迟、转写长度和失败阶段。
-- 可通过 `--metrics-uri tcp://127.0.0.1:10301` 暴露本地 `/health` 和
-  `/metrics`，供锁屏状态代理或 harness 抓取最近一次请求指标；`/metrics`
-  同时暴露静态音频合约和流并发模型，避免卫星诊断从源码里推断。
-- `StartTask` 认证/token 失败时自动刷新 token 并重试一次。
+## Features
 
-## Runtime options / 运行选项
+- Wyoming ASR server on TCP port `10300`
+- Home Assistant add-on and standalone container modes
+- Credential storage in `/data/doubao_credentials.json`
+- WebSocket sessions with Doubao ASR
+- Concurrent capture and provider upload
+- A bounded 50-chunk queue for backpressure
+- Provider VAD, interim result, and final result parsing
+- One token refresh and retry after a `StartTask` authentication failure
+- Token removal from raised errors
+- Optional local health and metrics endpoint
+- Zeroconf disabled by default in standalone container mode
 
-Language support note / 多语言说明：
+The service can send interim events to an optional callback. Home Assistant
+still receives only the final transcript.
 
-- Repository docs and Home Assistant add-on metadata are maintained in English
-  and Simplified Chinese.
-- The current upstream ASR capability is advertised as `zh` in Wyoming
-  `Describe`. Do not treat the bilingual metadata as English ASR support.
-- 文档和 Home Assistant add-on 元数据会同时维护英文和简体中文。
-- 当前上游识别能力在 Wyoming `Describe` 中仍声明为 `zh`。双语元数据不代表英文 ASR 已可用。
+## Diagnostics and privacy
 
-Home Assistant add-on options:
+Set `metrics_uri` to expose `GET /health` and `GET /metrics` on a local
+address.
+
+The metrics include:
+
+- request phase and request ID,
+- audio byte and frame counts,
+- provider VAD and result-event counts,
+- first interim and final result latency,
+- transcript character count,
+- endpoint state and failure phase,
+- the static audio and concurrency contracts.
+
+INFO logs do not contain transcript text. They record the transcript character
+count and request metadata. Keep DEBUG logs disabled unless you need them for a
+short investigation.
+
+The compact `endpoint` object uses these states:
+
+- `silence`
+- `speech_start`
+- `partial`
+- `endpoint_detected`
+- `complete`
+- `timeout`
+- `provider_error`
+- `error`
+
+Use `speech_started` when a caller needs one stable boolean value.
+
+## Home Assistant OS
+
+Home Assistant OS supports add-ons.
+
+1. Add this repository as a custom add-on repository.
+2. Install **Doubao ASR** from the Add-on Store.
+3. Start the add-on.
+4. Add it through the Wyoming Protocol integration.
+
+Default options:
 
 ```yaml
 debug_logging: false
@@ -91,33 +95,12 @@ zeroconf_timeout_s: 5
 metrics_uri: ""
 ```
 
-Standalone Docker uses the same values when `/data/options.json` is absent. To
-override them, create:
+Use `tcp://127.0.0.1:10301` for a local metrics listener.
 
-```json
-{
-  "debug_logging": false,
-  "response_timeout_s": 15,
-  "zeroconf_enabled": false,
-  "zeroconf_timeout_s": 5,
-  "metrics_uri": "tcp://127.0.0.1:10301"
-}
-```
+## Home Assistant Container
 
-## Home Assistant OS
-
-Home Assistant OS supports add-ons. Add this repository as a local/custom add-on
-repository, install `Doubao ASR`, then add it through the Wyoming Protocol
-integration.
-
-Home Assistant OS 支持 add-ons。推荐直接把本仓库添加为本地/自定义 add-on 仓库，在 Add-on Store 安装 `Doubao ASR`，然后通过 Wyoming Protocol 集成发现或手动添加。
-
-## Home Assistant Container / Docker
-
-Home Assistant Container does not support add-ons. Run this project as a
-standalone container and add a Wyoming integration manually in Home Assistant.
-
-Minimal compose example:
+Home Assistant Container does not support add-ons. Run this service as another
+container. Then add its Wyoming address to Home Assistant.
 
 ```yaml
 services:
@@ -131,101 +114,96 @@ services:
       - ./doubao-asr-data:/data
 ```
 
-In Home Assistant, add Wyoming manually with:
+Add the Docker host and port `10300` in the Wyoming Protocol integration. The
+correct host depends on your container network.
 
-- host: the Docker host IP, `127.0.0.1`, or the compose service name depending on
-  your network mode,
-- port: `10300`.
+When `/data/options.json` does not exist, the container uses the add-on
+defaults. Create the file to override them:
 
-## Development / 开发
+```json
+{
+  "debug_logging": false,
+  "response_timeout_s": 15,
+  "zeroconf_enabled": false,
+  "zeroconf_timeout_s": 5,
+  "metrics_uri": "tcp://127.0.0.1:10301"
+}
+```
 
-Use `uv`:
+## Verification
+
+Check the Wyoming server:
+
+```bash
+printf '{ "type": "describe" }\n' | nc -w 1 127.0.0.1 10300
+```
+
+This command only checks the server connection. It does not test recognition.
+
+For an ASR test:
+
+1. Prepare clear Chinese audio that matches the PCM input contract.
+2. Send the audio through a Wyoming client.
+3. Confirm that the service returns a final transcript.
+4. Check `/metrics` for a complete endpoint state.
+
+## Runtime boundary
+
+ASR quality depends on the satellite capture chain. This project does not own
+microphone gain, wake-word sensitivity, echo cancellation, audio routing,
+speaker volume, or local fallback prompts.
+
+One Wyoming connection owns one ASR stream. A multi-room system must create
+separate connections or service instances above this adapter.
+
+Keep zeroconf disabled in container deployments unless the network supports it.
+
+## Development
+
+Use `uv` for the Python environment.
 
 ```bash
 uv sync --dev
 uv run pytest
+uvx ruff check .
+uvx ruff format --check .
+git diff --check
+```
+
+Run the service locally:
+
+```bash
 uv run wyoming-doubao-asr \
   --uri tcp://127.0.0.1:10300 \
   --credentials-file /tmp/doubao_credentials.json \
   --log-level DEBUG
 ```
 
-Wyoming smoke test:
+Tests cover protocol packets, frame splitting, stream sequencing, endpoint
+metrics, token refresh, token redaction, and runtime option mapping.
 
-```bash
-printf '{ "type": "describe" }\n' | nc -w 1 127.0.0.1 10300
-```
+## Security and legal notice
 
-Real ASR verification:
+- Protect `/data/doubao_credentials.json` and its backups.
+- Do not publish credentials, raw audio, or transcripts in an issue.
+- Follow the provider terms, privacy rules, and data protection laws.
+- Read [DISCLAIMER.md](DISCLAIMER.md) before production use.
+- See [NOTICE.md](NOTICE.md) for upstream notices.
 
-1. Prepare clear Chinese 16 kHz mono signed 16-bit PCM audio.
-2. Feed it directly to the Wyoming ASR service.
-3. Confirm a final transcript is returned.
+## Documentation style
 
-Do not treat `describe` alone as a pass; it only verifies that the Wyoming server
-is reachable.
+This README applies practical rules from ASD-STE100 Simplified Technical
+English, Issue 9. It uses active voice, short sentences, and consistent terms.
 
-## Test coverage / 测试覆盖
+This use is not an ASD-STE100 compliance certification. Project-specific terms
+remain necessary.
 
-The current test suite covers:
-
-- Wyoming `Describe`,
-- PCM frame splitting,
-- Doubao protocol packet construction/parsing,
-- provider VAD/interim/final ASR metrics,
-- WebSocket ASR session sequence,
-- token refresh on auth failure,
-- token redaction in errors,
-- add-on run script option mapping,
-- Docker/standalone defaults.
-
-## Operational notes / 运维说明
-
-- ASR quality depends on the upstream satellite capture chain. Wakeword
-  sensitivity, microphone gain, echo cancellation, and capture/playback routing
-  are not controlled by this project.
-- The Wyoming handler now prefers the concurrent stream client path when
-  available. Home Assistant still receives only the final Wyoming `Transcript`;
-  live partial text should be treated as diagnostics/status, not user-visible
-  final ASR output.
-- Use `--metrics-uri tcp://127.0.0.1:10301` to expose `/health` and `/metrics`
-  for local scraping by a display agent or harness.
-- `/metrics` reports the expected Wyoming input as 16 kHz mono S16_LE and the
-  Doubao upstream payload as 16 kHz mono `speech_opus` frames. Multiple rooms
-  should be modeled above this service as separate Wyoming connections or
-  separate service instances; this adapter exposes
-  `future_multi_room_orchestrator` metadata but does not own room-level capture
-  orchestration.
-- The service expects PCM from Wyoming and sends Opus to Doubao. It does not
-  synthesize TTS and does not implement wake word detection.
-- For Home Assistant Container deployments, keep zeroconf disabled unless the
-  network stack is known to support it reliably.
-
-## Roadmap / 后续方向
-
-- Add real-audio end-to-end ASR tests that cover the full HA voice pipeline and
-  exercise the stream path under live capture timing.
-- Improve deployment docs for HA OS add-on repository setup and Container
-  compose variants.
-
-Non-goals:
-
-- claiming official Doubao API support,
-- adding TTS,
-- adding wake-word detection,
-- managing satellite speaker volume or local OPUS fallback prompts.
-
-## Legal / 合规
-
-- License: PolyForm Noncommercial License 1.0.0. Commercial use is not
-  permitted without a separate license. See `LICENSE`.
-- Credits and upstream MIT notices: see `NOTICE.md`.
-- Unofficial status, user responsibilities, third-party voice service notice,
-  and warranty disclaimer: see `DISCLAIMER.md`.
+Reference: ASD STEMG. [ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/), Issue 9, 2025.
 
 ## License
 
-Source-available for non-commercial use under the PolyForm Noncommercial
-License 1.0.0. See `LICENSE`.
+This source is available for non-commercial use under the
+[PolyForm Noncommercial License 1.0.0](LICENSE).
 
-This is not an OSI open-source license because commercial use is restricted.
+Commercial use requires a separate license. This license is not an OSI
+open-source license.
