@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_call:
   push:
     branches:
       - main
@@ -11,17 +12,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   version-source-guard:
     name: Reject manual version changes
     runs-on: ubuntu-latest
-    if: github.ref_type != 'tag'
+    if: github.ref_type != 'tag' && (github.event_name == 'push' || github.event_name == 'pull_request')
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -44,7 +45,8 @@ jobs:
             range="${BEFORE_SHA}..${HEAD_SHA}"
           fi
 
-          changed="$(git diff --name-only "${range}" -- pyproject.toml config.yaml || true)"
+          changed="$(git diff -U0 "${range}" -- pyproject.toml config.yaml |
+            grep -E '^[+-](version = |version: )' || true)"
           if [[ -z "${changed}" ]]; then
             exit 0
           fi
@@ -68,13 +70,18 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
-          version: "0.9.26"
+          version: "0.12.5"
           enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.13"
 
       - name: Install system dependencies
         run: |
@@ -82,12 +89,12 @@ jobs:
           sudo apt-get install -y --no-install-recommends libopus0
 
       - name: Check lockfile
-        run: uv lock --check
+        run: uv sync --locked --group dev
 
       - name: Run Ruff
         run: |
-          uv run --with ruff ruff check .
-          uv run --with ruff ruff format . --check
+          uv run ruff check .
+          uv run ruff format . --check
 
       - name: Run tests
         run: uv run pytest
@@ -99,7 +106,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Build image
         run: docker build -t doubao-asr-for-ha:test .

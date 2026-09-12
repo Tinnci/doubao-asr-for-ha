@@ -21,12 +21,18 @@ permissions:
 
 concurrency:
   group: release-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
   prepare-release:
     name: Prepare automatic release tag
+    needs: verify
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     outputs:
@@ -34,14 +40,21 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Ensure automatic releases run from main
+        if: github.ref_name != 'main'
+        run: |
+          echo "Automatic releases must run from main." >&2
+          exit 1
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
-          version: "0.9.26"
+          version: "0.12.5"
 
       - name: Bump version, commit, and tag
         id: version
@@ -50,7 +63,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 <<'PY'
+          uv run --locked python <<'PY'
           import os
           import re
           import subprocess
@@ -114,25 +127,26 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           uv lock
+          uv lock --check
           git add pyproject.toml config.yaml uv.lock
           tag="$(grep '^tag=' "${GITHUB_OUTPUT}" | cut -d= -f2)"
           git commit -m "Release ${tag}"
           git tag -a "${tag}" -m "${tag}"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
-          git push origin "${tag}"
+          git push --atomic origin "HEAD:main" "refs/tags/${tag}"
 
   docker:
     name: Publish Docker image
-    if: ${{ always() && (github.event_name == 'push' || needs.prepare-release.result == 'success') }}
-    needs: prepare-release
+    if: ${{ always() && needs.verify.result == 'success' && (github.event_name == 'push' || needs.prepare-release.result == 'success') }}
+    needs: [verify, prepare-release]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
       packages: write
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && needs.prepare-release.outputs.tag || github.ref }}
 

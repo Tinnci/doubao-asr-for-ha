@@ -1,9 +1,10 @@
 ARG BUILD_FROM=debian:bookworm-slim
-FROM ghcr.io/astral-sh/uv:0.9.26 AS uv
+FROM ghcr.io/astral-sh/uv:0.12.5 AS uv
 
 FROM ${BUILD_FROM}
 
 ENV UV_PROJECT_ENVIRONMENT=/usr/src/app/.venv
+ENV UV_PYTHON=3.13
 ENV PATH="/usr/src/app/.venv/bin:${PATH}"
 
 RUN \
@@ -13,7 +14,6 @@ RUN \
         jq \
         libopus0 \
         netcat-traditional \
-        python3 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=uv /uv /uvx /usr/local/bin/

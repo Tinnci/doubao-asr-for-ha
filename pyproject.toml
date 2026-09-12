@@ -47,6 +47,7 @@ wyoming-doubao-asr = "wyoming_doubao_asr.__main__:run"
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
+    "ruff==0.16.7",
 ]
 
 [build-system]

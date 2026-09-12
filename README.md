@@ -163,10 +163,10 @@ Keep zeroconf disabled in container deployments unless the network supports it.
 Use `uv` for the Python environment.
 
 ```bash
-uv sync --dev
+uv sync --locked --group dev
 uv run pytest
-uvx ruff check .
-uvx ruff format --check .
+uv run ruff check .
+uv run ruff format --check .
 git diff --check
 ```
 
@@ -181,6 +181,9 @@ uv run wyoming-doubao-asr \
 
 Tests cover protocol packets, frame splitting, stream sequencing, endpoint
 metrics, token refresh, token redaction, and runtime option mapping.
+
+CI and the container run Python 3.13 managed by uv. See
+[Release preparation / 发布准备](docs/releasing.md) for the planned 0.1.9 release.
 
 ## Security and legal notice
 
