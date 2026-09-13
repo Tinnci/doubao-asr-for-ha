@@ -243,57 +243,68 @@ class DoubaoAsrClient:
         self._last_metrics["endpoint"] = endpoint_summary(self._last_metrics)
 
         try:
-            credentials = await self._get_credentials()
-        except Exception as err:
-            self._record_error_metrics(
-                request_id,
-                "credentials",
-                request_started,
-                audio_bytes=0,
-                error=err,
-            )
-            raise DoubaoAsrError(
-                "credentials",
-                str(err),
-                request_id=request_id,
-            ) from err
-
-        try:
-            return await self._transcribe_stream_with_credentials(
-                pcm_chunks,
-                credentials,
-                request_id,
-                on_result,
-                request_started,
-            )
-        except DoubaoAsrError as err:
-            if not (
-                (err.phase == "start_task")
-                and _is_auth_error(str(err))
-                and (self._refresh_credentials is not None)
-            ):
+            try:
+                credentials = await self._get_credentials()
+            except Exception as err:
                 self._record_error_metrics(
                     request_id,
-                    err.phase,
+                    "credentials",
                     request_started,
-                    audio_bytes=int(self._last_metrics.get("audio_bytes") or 0),
+                    audio_bytes=0,
                     error=err,
                 )
-                raise
+                raise DoubaoAsrError(
+                    "credentials",
+                    str(err),
+                    request_id=request_id,
+                ) from err
 
-            _LOGGER.warning(
-                "Doubao ASR streaming auth failed; refreshing credentials "
-                "request_id=%s",
-                request_id,
-            )
-            refreshed_credentials = await self._refresh_credentials_now()
-            return await self._transcribe_stream_with_credentials(
-                pcm_chunks,
-                refreshed_credentials,
-                request_id,
-                on_result,
-                request_started,
-            )
+            try:
+                return await self._transcribe_stream_with_credentials(
+                    pcm_chunks,
+                    credentials,
+                    request_id,
+                    on_result,
+                    request_started,
+                )
+            except DoubaoAsrError as err:
+                if not (
+                    (err.phase == "start_task")
+                    and _is_auth_error(str(err))
+                    and (self._refresh_credentials is not None)
+                ):
+                    self._record_error_metrics(
+                        request_id,
+                        err.phase,
+                        request_started,
+                        audio_bytes=int(self._last_metrics.get("audio_bytes") or 0),
+                        error=err,
+                    )
+                    raise
+
+                _LOGGER.warning(
+                    "Doubao ASR streaming auth failed; refreshing credentials "
+                    "request_id=%s",
+                    request_id,
+                )
+                refreshed_credentials = await self._refresh_credentials_now()
+                return await self._transcribe_stream_with_credentials(
+                    pcm_chunks,
+                    refreshed_credentials,
+                    request_id,
+                    on_result,
+                    request_started,
+                )
+        except asyncio.CancelledError:
+            if self._last_metrics.get("request_id") == request_id:
+                self._last_metrics = {
+                    **self._last_metrics,
+                    "phase": "cancelled",
+                    "status": "cancelled",
+                    "total_latency_ms": _elapsed_ms(request_started),
+                }
+                _attach_endpoint_summary(self._last_metrics)
+            raise
 
     async def _transcribe_with_credentials(
         self,

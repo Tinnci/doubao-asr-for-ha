@@ -70,11 +70,23 @@ The compact `endpoint` object uses these states:
 - `partial`
 - `endpoint_detected`
 - `complete`
+- `cancelled`
 - `timeout`
 - `provider_error`
 - `error`
 
 Use `speech_started` when a caller needs one stable boolean value.
+
+Closing the Wyoming connection cancels and awaits the provider task, including
+a command window closed before its first audio chunk. Its queue and language
+state are released. Cancellation during credential lookup is also terminal:
+`phase=cancelled`, `endpoint.terminal=true`, and `interrupt_ready=false`.
+It is not reported as recognized speech or a provider failure.
+
+Wyoming 断开连接时会等待上游任务取消并清理缓冲，即使尚未收到第一块音频。
+取消状态独立于识别成功和服务错误。2026-09-13 在 kukui 实机的已部署容器中
+验证了零音频连接从 `starting` 进入 `cancelled`，以及真实麦克风双轮识别成功。
+该验证不代表人工远场识别率或声学验收。
 
 ## Home Assistant OS
 

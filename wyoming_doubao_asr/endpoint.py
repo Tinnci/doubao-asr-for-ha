@@ -70,8 +70,8 @@ def _endpoint_state(
         return "provider_error"
     if error_kind:
         return "error"
-    if phase == "complete":
-        return "complete"
+    if phase in {"complete", "cancelled"}:
+        return phase
     if phase not in IN_PROGRESS_PHASES:
         return "error"
     if endpoint_detected:
@@ -103,8 +103,8 @@ def _endpoint_reason(
         return "no_active_request"
     if error_kind:
         return error_kind
-    if phase == "complete":
-        return "complete"
+    if phase in {"complete", "cancelled"}:
+        return phase
     if phase not in IN_PROGRESS_PHASES:
         return "unknown_phase"
     if endpoint_detected:

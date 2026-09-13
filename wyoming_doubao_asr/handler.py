@@ -127,12 +127,23 @@ class DoubaoEventHandler(AsyncEventHandler):
             await self._stream_queue.put(None)
         return await self._stream_task
 
+    async def disconnect(self) -> None:
+        """Release the provider request even if HA closes before AudioStop."""
+        await self._cancel_stream_task()
+        self._audio_chunks.clear()
+        self._language = None
+
     async def _cancel_stream_task(self) -> None:
-        if self._stream_task is None or self._stream_task.done():
+        task = self._stream_task
+        self._stream_task = None
+        self._stream_queue = None
+        if task is None:
             return
-        self._stream_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self._stream_task
+        if not task.done():
+            task.cancel()
+        # Retrieve completed failures too, so they do not leak an unhandled task.
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await task
 
     def _raise_if_stream_stopped(self) -> None:
         if self._stream_task is None or not self._stream_task.done():
