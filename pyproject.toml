@@ -40,6 +40,10 @@ Repository = "https://github.com/Tinnci/doubao-asr-for-ha"
 Issues = "https://github.com/Tinnci/doubao-asr-for-ha/issues"
 Source = "https://github.com/Tinnci/doubao-asr-for-ha"
 
+[tool.uv]
+# Wyoming's discovery extra pins an old zeroconf with LAN packet parsing flaws.
+override-dependencies = ["zeroconf>=0.149.16,<1"]
+
 [project.scripts]
 wyoming-doubao-asr = "wyoming_doubao_asr.__main__:run"
 
