@@ -244,7 +244,8 @@ class DoubaoAsrClient:
 
         try:
             try:
-                credentials = await self._get_credentials()
+                async with asyncio.timeout(self._response_timeout_s):
+                    credentials = await self._get_credentials()
             except Exception as err:
                 self._record_error_metrics(
                     request_id,
@@ -442,7 +443,7 @@ class DoubaoAsrClient:
                 if inspect.isawaitable(result):
                     await result
 
-    async def _transcribe_stream_with_credentials(
+    async def _transcribe_stream_with_credentials(  # noqa: PLR0915 - keep request/task cleanup in one lifecycle
         self,
         pcm_chunks: AsyncIterable[bytes],
         credentials: DeviceCredentials,
@@ -451,10 +452,11 @@ class DoubaoAsrClient:
         request_started: float,
     ) -> str:
         try:
-            ws = await self._transport.connect(
-                self._ws_url(credentials),
-                self._headers(),
-            )
+            async with asyncio.timeout(self._response_timeout_s):
+                ws = await self._transport.connect(
+                    self._ws_url(credentials),
+                    self._headers(),
+                )
         except Exception as err:
             raise DoubaoAsrError("connect", str(err), request_id=request_id) from err
 
@@ -476,6 +478,7 @@ class DoubaoAsrClient:
             _attach_endpoint_summary(self._last_metrics)
 
         reader_task: asyncio.Task[tuple[str, dict[str, Any]]] | None = None
+        sender_task: asyncio.Task[None] | None = None
         try:
             _LOGGER.debug("Doubao ASR streaming StartTask request_id=%s", request_id)
             await ws.send_bytes(build_start_task(request_id, credentials.token))
@@ -512,21 +515,33 @@ class DoubaoAsrClient:
             start_time_ms = self._time_ms_factory()
             try:
                 send_started = time.monotonic()
-                await self._send_pcm_stream(
-                    ws,
-                    request_id,
-                    pcm_chunks,
-                    start_time_ms=start_time_ms,
-                    progress=progress,
-                    send_started=send_started,
-                    request_started=request_started,
+                sender_task = asyncio.create_task(
+                    self._send_pcm_stream(
+                        ws,
+                        request_id,
+                        pcm_chunks,
+                        start_time_ms=start_time_ms,
+                        progress=progress,
+                        send_started=send_started,
+                        request_started=request_started,
+                    ),
+                    name=f"doubao_asr_send_{request_id}",
                 )
+                done, _ = await asyncio.wait(
+                    {sender_task, reader_task}, return_when=asyncio.FIRST_COMPLETED
+                )
+                if reader_task in done:
+                    # Failures must interrupt capture, not wait for the next PCM chunk.
+                    reader_task.result()
+                await sender_task
                 send_metrics = _audio_send_metrics(
                     progress["frames"],
                     send_started=send_started,
                     request_started=request_started,
                     first_frame_started=progress.get("_first_frame_started"),
                 )
+            except DoubaoAsrError:
+                raise
             except Exception as err:
                 raise DoubaoAsrError(
                     "send_audio",
@@ -574,10 +589,13 @@ class DoubaoAsrClient:
             )
             return text
         finally:
-            if reader_task is not None and not reader_task.done():
-                reader_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await reader_task
+            for task in (sender_task, reader_task):
+                if task is not None:
+                    if not task.done():
+                        task.cancel()
+                    # Retrieve completed failures as well as cancelled work.
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
+                        await task
             await ws.close()
             close_transport = getattr(self._transport, "close", None)
             if close_transport is not None:
@@ -598,12 +616,26 @@ class DoubaoAsrClient:
     ) -> None:
         encoder = self._encoder_factory()
         frame_index = 0
-        async for pcm_frame in async_iter_pcm_frames(
-            pcm_chunks,
-            sample_rate=SAMPLE_RATE,
-            channels=CHANNELS,
-            width=SAMPLE_WIDTH,
-        ):
+        frames = aiter(
+            async_iter_pcm_frames(
+                pcm_chunks,
+                sample_rate=SAMPLE_RATE,
+                channels=CHANNELS,
+                width=SAMPLE_WIDTH,
+            )
+        )
+        while True:
+            try:
+                async with asyncio.timeout(self._response_timeout_s):
+                    pcm_frame = await anext(frames)
+            except StopAsyncIteration:
+                break
+            except TimeoutError as err:
+                raise DoubaoAsrError(
+                    "audio_timeout",
+                    "No PCM frame arrived within the response timeout",
+                    request_id=request_id,
+                ) from err
             if frame_index == 0:
                 first_frame_started = time.monotonic()
                 progress["_first_frame_started"] = first_frame_started

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from unittest.mock import Mock
 
 import pytest
 from wyoming.asr import Transcribe, Transcript
@@ -109,6 +110,23 @@ def make_handler(fake_client: FakeClient) -> tuple[DoubaoEventHandler, list]:
     return handler, written
 
 
+async def test_idle_wyoming_peer_is_closed_when_provider_fails() -> None:
+    client = EarlyFailingStreamingClient()
+    handler, written = make_handler(client)
+    handler.writer = Mock()
+    handler._is_running = True  # noqa: SLF001 - exercise the real running-peer watchdog
+    await handler.handle_event(Transcribe().event())
+    await client.started.wait()
+    for _ in range(20):
+        if handler.writer.close.called:
+            break
+        await asyncio.sleep(0)
+    assert handler.writer.close.called
+    assert handler.reader.at_eof()
+    assert not any(event.type == "transcript" for event in written)
+    await handler.disconnect()
+
+
 async def test_describe_returns_doubao_asr_info() -> None:
     handler, written = make_handler(FakeClient())
 
@@ -195,6 +213,31 @@ async def test_streaming_audio_queue_applies_backpressure() -> None:
     assert keep_running is False
     assert transcript.text == "打开客厅灯"
     assert fake_client.chunks[-1] == b"\x02\x00"
+
+
+@pytest.mark.parametrize("stop", [False, True])
+async def test_provider_failure_unblocks_full_audio_queue(*, stop: bool) -> None:
+    client = PausedStreamingFakeClient()
+    handler, written = make_handler(client)
+    await handler.handle_event(Transcribe().event())
+    await client.started.wait()
+    chunk = AudioChunk(rate=16000, width=2, channels=1, audio=b"\x01\x00").event()
+    for _ in range(STREAM_QUEUE_MAX_CHUNKS):
+        await handler.handle_event(chunk)
+    pending = asyncio.create_task(
+        handler.handle_event(AudioStop().event() if stop else chunk)
+    )
+    await asyncio.sleep(0)
+    assert not pending.done()
+    task = handler._stream_task  # noqa: SLF001 - inject provider failure after backpressure
+    assert task is not None
+    task.cancel()
+    try:
+        with pytest.raises(DoubaoAsrError):
+            await asyncio.wait_for(pending, timeout=0.1)
+        assert not written
+    finally:
+        await handler.disconnect()
 
 
 async def test_streaming_client_failure_surfaces_before_queueing_audio() -> None:

@@ -49,6 +49,7 @@ class DoubaoEventHandler(AsyncEventHandler):
         self._audio_chunks: list[bytes] = []
         self._stream_queue: asyncio.Queue[bytes | None] | None = None
         self._stream_task: asyncio.Task[str] | None = None
+        self._stream_watchdog: asyncio.Task[None] | None = None
         self._audio_converter = AudioChunkConverter(
             rate=SAMPLE_RATE,
             width=SAMPLE_WIDTH,
@@ -75,13 +76,17 @@ class DoubaoEventHandler(AsyncEventHandler):
                     ),
                     name="doubao_asr_stream",
                 )
+                if self._is_running:
+                    self._stream_watchdog = asyncio.create_task(
+                        self._watch_stream(self._stream_task),
+                        name="doubao_asr_watchdog",
+                    )
             return True
 
         if AudioChunk.is_type(event.type):
             chunk = self._audio_converter.convert(AudioChunk.from_event(event))
             if self._stream_queue is not None:
-                self._raise_if_stream_stopped()
-                await self._stream_queue.put(chunk.audio)
+                await self._queue_stream_audio(chunk.audio)
             else:
                 self._audio_chunks.append(chunk.audio)
             return True
@@ -124,8 +129,32 @@ class DoubaoEventHandler(AsyncEventHandler):
                 language=self._language,
             )
         if self._stream_queue is not None:
-            await self._stream_queue.put(None)
+            await self._queue_stream_audio(None)
         return await self._stream_task
+
+    async def _queue_stream_audio(self, chunk: bytes | None) -> None:
+        """Keep backpressure interruptible when its consumer stops."""
+        self._raise_if_stream_stopped()
+        queue, stream = self._stream_queue, self._stream_task
+        if queue is None or stream is None:
+            raise DoubaoAsrError("stream_audio", "streaming task is unavailable")
+        put = asyncio.create_task(queue.put(chunk))
+        try:
+            done, _pending = await asyncio.wait(
+                (put, stream), return_when=asyncio.FIRST_COMPLETED
+            )
+            if stream in done:
+                # AudioStop can race with successful consumption of its sentinel.
+                if chunk is None and put.done() and not stream.cancelled():
+                    stream.result()
+                else:
+                    self._raise_if_stream_stopped()
+            await put
+        finally:
+            if not put.done():
+                put.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await put
 
     async def disconnect(self) -> None:
         """Release the provider request even if HA closes before AudioStop."""
@@ -134,6 +163,12 @@ class DoubaoEventHandler(AsyncEventHandler):
         self._language = None
 
     async def _cancel_stream_task(self) -> None:
+        watchdog = self._stream_watchdog
+        self._stream_watchdog = None
+        if watchdog is not None:
+            watchdog.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watchdog
         task = self._stream_task
         self._stream_task = None
         self._stream_queue = None
@@ -144,6 +179,16 @@ class DoubaoEventHandler(AsyncEventHandler):
         # Retrieve completed failures too, so they do not leak an unhandled task.
         with contextlib.suppress(asyncio.CancelledError, Exception):
             await task
+
+    async def _watch_stream(self, task: asyncio.Task[str]) -> None:
+        """Release a quiet Wyoming peer when the provider fails without new audio."""
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            return
+        except Exception as err:  # noqa: BLE001 - provider failures must close the protocol peer
+            _LOGGER.warning("Provider stream stopped: %s", type(err).__name__)
+            await self.stop()
 
     def _raise_if_stream_stopped(self) -> None:
         if self._stream_task is None or not self._stream_task.done():

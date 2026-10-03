@@ -2,6 +2,8 @@ import asyncio
 import json
 from urllib.parse import parse_qs, urlparse
 
+import pytest
+
 from wyoming_doubao_asr.client import DoubaoAsrClient, DoubaoAsrError
 from wyoming_doubao_asr.constants import APP_NAME, PROTO_VERSION, VERSION_CODE
 from wyoming_doubao_asr.device import DeviceCredentials
@@ -140,6 +142,54 @@ class StreamingFakeWebSocket:
 
     async def close(self) -> None:
         self.closed = True
+
+
+async def test_stream_missing_first_audio_times_out_and_closes_provider() -> None:
+    ws = StreamingFakeWebSocket()
+    client = DoubaoAsrClient(
+        credentials_provider=lambda: DeviceCredentials(
+            "device", "install", "cdid", "open", "client", "token"
+        ),
+        transport=FakeTransport(ws),
+        encoder_factory=FakeEncoder,
+        response_timeout_s=0.02,
+    )
+
+    async def stalled():
+        await asyncio.Event().wait()
+        yield b""
+
+    with pytest.raises(DoubaoAsrError):
+        await asyncio.wait_for(client.transcribe_pcm_stream(stalled()), timeout=0.3)
+    assert ws.closed
+    assert client.last_metrics["phase"] != "starting"
+
+
+async def test_provider_read_failure_interrupts_wait_for_first_audio() -> None:
+    ws = StreamingFakeWebSocket()
+    ws.responses.put_nowait(
+        encode_response(
+            message_type="TaskFailed",
+            status_code=500,
+            status_message="provider unavailable",
+        )
+    )
+    client = DoubaoAsrClient(
+        credentials_provider=lambda: DeviceCredentials(
+            "device", "install", "cdid", "open", "client", "token"
+        ),
+        transport=FakeTransport(ws),
+        encoder_factory=FakeEncoder,
+        response_timeout_s=5,
+    )
+
+    async def stalled():
+        await asyncio.Event().wait()
+        yield b""
+
+    with pytest.raises(DoubaoAsrError):
+        await asyncio.wait_for(client.transcribe_pcm_stream(stalled()), timeout=0.3)
+    assert ws.closed
 
 
 def _assert_streaming_endpoint(
