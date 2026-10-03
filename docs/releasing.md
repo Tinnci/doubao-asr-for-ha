@@ -15,7 +15,7 @@ docker build -t doubao-asr:check .
 
 CI and containers use Python 3.13. The container obtains it through uv, including
 when Home Assistant supplies the Debian base image in `build.yaml`. CI and the
-image share uv 0.12.5; dependencies and Ruff are locked. The Python package still
+image share uv 0.12.22; dependencies and Ruff are locked. The Python package still
 declares its existing compatibility range for library consumers.
 
 After reviewing and pushing the commit, run **Release** from `main` with `patch`.

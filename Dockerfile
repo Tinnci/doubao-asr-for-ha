@@ -1,5 +1,5 @@
 ARG BUILD_FROM=debian:bookworm-slim
-FROM ghcr.io/astral-sh/uv:0.12.5 AS uv
+FROM ghcr.io/astral-sh/uv:0.12.22 AS uv
 
 FROM ${BUILD_FROM}
 
